@@ -628,7 +628,7 @@ export default function App() {
       </aside>
 
       {/* Main content */}
-      <main style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"auto", padding:"28px 36px", gap:20, minWidth:0 }}>
+      <main style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"hidden", padding:"28px 36px", gap:20, minWidth:0 }}>
 
         {/* Top bar */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -668,7 +668,7 @@ export default function App() {
         )}
 
         {/* Email table */}
-        <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.04)", flex:1 }}>
+        <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, overflowY:"auto",minHeight:0 , boxShadow:"0 1px 6px rgba(0,0,0,0.04)", flex:1 }}>
           {/* Table header */}
           {filtered.length > 0 && (
             <div style={{ display:"flex", alignItems:"center", padding:"12px 24px", background:"#f8fafc", borderBottom:"2px solid #e2e8f0", fontSize:11, color:"#94a3b8", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.6px", gap:8 }}>
