@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MailMind</string>
+    <string name="title_activity_main">MailMind</string>
+    <string name="package_name">com.mailmind.app</string>
+    <string name="custom_url_scheme">com.mailmind.app</string>
+</resources>
