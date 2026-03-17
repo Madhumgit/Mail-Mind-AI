@@ -17,3 +17,4 @@ services:
         value: 0
       - key: PYTHON_VERSION
         value: 3.11.0
+        runtime: python
