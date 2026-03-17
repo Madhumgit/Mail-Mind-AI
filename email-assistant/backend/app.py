@@ -3,13 +3,12 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 
-from database        import init_db, insert_email, get_all_emails, get_stats, mark_as_read, delete_email
+from database        import init_db, insert_email, get_all_emails, get_stats, mark_as_read, delete_email, save_user_settings, get_user_settings, get_user_credentials
 from gmail_service   import fetch_emails, test_connection
 from classifier      import classify_email, train_model, train_bert
 from priority_detector import detect_priority
 from summarizer      import summarize_email
 from scheduler       import start_scheduler, get_next_run, set_processor
-from voice_assistant import listen_command, handle_voice_query, speak
 from smart_reply     import generate_smart_replies
 
 load_dotenv()
@@ -30,6 +29,12 @@ def after_request(response):
 # ─────────────────────────────────────────────
 
 def process_and_store_emails():
+    email_addr, app_pwd = get_user_credentials()
+    if not email_addr or not app_pwd:
+        print("[App] No credentials found. Please configure Gmail settings.")
+        return 0
+    os.environ["EMAIL_ADDRESS"]      = email_addr
+    os.environ["EMAIL_APP_PASSWORD"] = app_pwd
     raw_emails = fetch_emails(max_emails=int(os.getenv("MAX_EMAILS_PER_FETCH", 0)) or None)
     processed  = 0
     for email_data in raw_emails:
@@ -109,6 +114,11 @@ def stats():
 
 @app.route("/api/connection/test", methods=["GET"])
 def connection_test():
+    # Load credentials from DB before testing
+    email_addr, app_pwd = get_user_credentials()
+    if email_addr:
+        os.environ["EMAIL_ADDRESS"]      = email_addr
+        os.environ["EMAIL_APP_PASSWORD"] = app_pwd
     success, message = test_connection()
     return jsonify({"connected": success, "message": message})
 
@@ -119,36 +129,24 @@ def connection_test():
 
 @app.route("/api/settings", methods=["GET"])
 def get_settings():
-    email      = os.getenv("EMAIL_ADDRESS", "")
-    configured = bool(email and os.getenv("EMAIL_APP_PASSWORD"))
-    return jsonify({"email": email, "configured": configured})
+    settings = get_user_settings()
+    return jsonify(settings)
 
 
 @app.route("/api/settings", methods=["POST"])
 def save_settings():
-    data     = request.get_json()
+    data     = request.get_json(force=True, silent=True) or {}
     email    = data.get("email", "").strip()
     password = data.get("app_password", "").strip()
 
     if not email or not password:
         return jsonify({"success": False, "error": "Email and password are required"}), 400
 
-    env_path    = os.path.join(os.path.dirname(__file__), ".env")
-    env_content = f"""# Gmail IMAP Settings
-EMAIL_ADDRESS={email}
-EMAIL_APP_PASSWORD={password}
-
-# App Settings
-FLASK_PORT=5000
-SCHEDULER_INTERVAL_MINUTES=30
-MAX_EMAILS_PER_FETCH=0
-"""
     try:
-        with open(env_path, "w") as f:
-            f.write(env_content)
-        os.environ["EMAIL_ADDRESS"]      = email
-        os.environ["EMAIL_APP_PASSWORD"] = password
-        return jsonify({"success": True, "message": "Settings saved successfully!"})
+        success = save_user_settings(email, password)
+        if success:
+            return jsonify({"success": True, "message": "Settings saved successfully!"})
+        return jsonify({"success": False, "error": "Failed to save settings"}), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -169,27 +167,15 @@ def retrain():
 
 @app.route("/api/ai/train", methods=["POST"])
 def ai_train():
-    """
-    Fine-tune DistilBERT on emails in the DB.
-    Call after fetching 50+ emails for best accuracy.
-    """
+    """Fine-tune DistilBERT on emails in the DB."""
     try:
         emails = get_all_emails(limit=500)
         if len(emails) < 10:
-            return jsonify({
-                "success": False,
-                "error": "Need at least 10 emails. Fetch more emails first."
-            }), 400
-
+            return jsonify({"success": False, "error": "Need at least 10 emails. Fetch more emails first."}), 400
         result = train_bert(emails=emails)
-
         if "error" in result:
             return jsonify({"success": False, "error": result["error"]}), 500
-
-        return jsonify({
-            "success": True,
-            "message": f"DistilBERT trained on {result.get('samples', 0)} emails!",
-        })
+        return jsonify({"success": True, "message": f"DistilBERT trained on {result.get('samples', 0)} emails!"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -217,13 +203,11 @@ def ai_status():
 
 @app.route("/api/emails/<int:email_id>/smart-replies", methods=["GET"])
 def smart_replies_by_id(email_id):
-    """Get 3 smart reply suggestions for a specific email by its ID."""
     try:
         emails = get_all_emails(limit=1000)
         email  = next((e for e in emails if e["id"] == email_id), None)
         if not email:
             return jsonify({"success": False, "error": "Email not found"}), 404
-
         replies = generate_smart_replies(
             subject  = email.get("subject", ""),
             body     = email.get("body", ""),
@@ -237,9 +221,8 @@ def smart_replies_by_id(email_id):
 
 @app.route("/api/smart-replies", methods=["POST"])
 def smart_replies_direct():
-    """Get smart replies by passing email content directly."""
     try:
-        data    = request.get_json() or {}
+        data    = request.get_json(force=True, silent=True) or {}
         replies = generate_smart_replies(
             subject  = data.get("subject", ""),
             body     = data.get("body", ""),
@@ -252,38 +235,30 @@ def smart_replies_direct():
 
 
 # ─────────────────────────────────────────────
-# Voice Assistant
+# Debug
 # ─────────────────────────────────────────────
 
-@app.route("/api/voice/listen", methods=["POST"])
-def voice_listen():
-    command, error = listen_command(timeout=6)
-    if error:
-        return jsonify({"success": False, "error": error})
-    emails   = get_all_emails(limit=200)
-    response = handle_voice_query(command, emails)
-    return jsonify({"success": True, "command": command, "response": response})
-
-
-@app.route("/api/voice/command", methods=["POST"])
-def voice_command():
-    data    = request.get_json()
-    command = data.get("command", "").lower()
-    if not command:
-        return jsonify({"success": False, "error": "No command provided"})
-    emails   = get_all_emails(limit=200)
-    response = handle_voice_query(command, emails)
-    return jsonify({"success": True, "command": command, "response": response})
-
-
-@app.route("/api/voice/speak", methods=["POST"])
-def voice_speak():
-    data = request.get_json()
-    text = data.get("text", "")
-    if text:
-        speak(text)
-        return jsonify({"success": True})
-    return jsonify({"success": False, "error": "No text provided"})
+@app.route("/api/debug/counts", methods=["GET"])
+def debug_counts():
+    try:
+        import imaplib
+        email_addr, app_pwd = get_user_credentials()
+        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        mail.login(email_addr, app_pwd)
+        folder_counts = {}
+        for f in ['"[Gmail]/All Mail"', "INBOX", '"[Gmail]/Spam"', '"[Gmail]/Sent Mail"']:
+            try:
+                status, _ = mail.select(f, readonly=True)
+                if status == "OK":
+                    _, data = mail.search(None, "ALL")
+                    folder_counts[f] = len(data[0].split())
+            except:
+                folder_counts[f] = "unavailable"
+        mail.logout()
+        db_count = len(get_all_emails(limit=99999))
+        return jsonify({"gmail_folders": folder_counts, "database_count": db_count})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ─────────────────────────────────────────────
@@ -295,51 +270,6 @@ if __name__ == "__main__":
     set_processor(process_and_store_emails)
     interval = int(os.getenv("SCHEDULER_INTERVAL_MINUTES", 30))
     start_scheduler(interval_minutes=interval)
-    port = int(os.getenv("FLASK_PORT", 5000))
+    port = int(os.getenv("PORT", os.getenv("FLASK_PORT", 5000)))
     print(f"[App] Starting Email Assistant API on port {port}")
-    app.run(host="0.0.0.0", debug=True, port=port, use_reloader=False)
-
-
-# ─────────────────────────────────────────────
-# Debug Route — check exact email counts
-# ─────────────────────────────────────────────
-
-@app.route("/api/debug/counts", methods=["GET"])
-def debug_counts():
-    """Check how many emails exist in Gmail vs database."""
-    try:
-        from gmail_service import list_folders
-        import imaplib, os
-
-        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
-        mail.login(os.getenv("EMAIL_ADDRESS"), os.getenv("EMAIL_APP_PASSWORD"))
-
-        folder_counts = {}
-        folders_to_check = [
-            '"[Gmail]/All Mail"',
-            "INBOX",
-            '"[Gmail]/Spam"',
-            '"[Gmail]/Sent Mail"',
-        ]
-
-        for f in folders_to_check:
-            try:
-                status, _ = mail.select(f, readonly=True)
-                if status == "OK":
-                    _, data = mail.search(None, "ALL")
-                    count = len(data[0].split())
-                    folder_counts[f] = count
-            except:
-                folder_counts[f] = "unavailable"
-
-        mail.logout()
-
-        db_count = len(get_all_emails(limit=99999))
-
-        return jsonify({
-            "gmail_folders": folder_counts,
-            "database_count": db_count,
-            "note": "If All Mail count is low, your Gmail account may have few emails"
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    app.run(host="0.0.0.0", debug=False, port=port, use_reloader=False)
