@@ -1,0 +1,18 @@
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/ml_model/classifier.pkl
+backend/ml_model/distilbert/
+backend/emails.db
+backend/.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/android/build/
+frontend/.gradle/
+
+# General
+*.pyc
+__pycache__/
+.env
