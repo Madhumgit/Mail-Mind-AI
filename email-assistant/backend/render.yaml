@@ -1,7 +1,15 @@
 services:
   - type: web
-    name: your-app
+    name: mailmind-api
     runtime: python
-    pythonVersion: "3.10.8"
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: FLASK_PORT
+        value: 10000
+      - key: SCHEDULER_INTERVAL_MINUTES
+        value: 30
+      - key: MAX_EMAILS_PER_FETCH
+        value: 0
+      - key: PYTHON_VERSION
+        value: 3.11.0
