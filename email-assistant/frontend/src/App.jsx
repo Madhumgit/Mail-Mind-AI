@@ -4,13 +4,16 @@ import {
   Mail, Briefcase, GraduationCap, Calendar, ShieldAlert, Inbox,
   RefreshCw, Trash2, CheckCheck, Clock, Wifi, WifiOff,
   X, Search, Settings, AlertCircle, MessageSquare,
-  Copy, Check, Zap, ChevronDown, Volume2, Mic, MicOff, Menu
+  Copy, Check, Zap, ChevronDown, Menu
 } from "lucide-react";
 
 // ── API ────────────────────────────────────────────────────────────────────────
 const YOUR_PC_IP  = "10.22.23.35";
 const isCapacitor = typeof window !== "undefined" && window.Capacitor !== undefined;
-const API = API_BASE;
+const API         = isCapacitor
+  ? `http://${YOUR_PC_IP}:5000/api`
+  : "http://localhost:5000/api";
+
 // ── Category config ────────────────────────────────────────────────────────────
 const CATS = {
   All:        { icon: Inbox,         color: "#6366f1", bg: "#eef2ff", label: "All"         },
@@ -59,9 +62,6 @@ export default function App() {
   const [smartReplies, setSmartReplies] = useState({});
   const [loadingReplies, setLoadingReplies] = useState({});
   const [copiedReply, setCopiedReply]   = useState(null);
-  const [voiceInput, setVoiceInput]     = useState("");
-  const [voiceResult, setVoiceResult]   = useState("");
-  const [voiceActive, setVoiceActive]   = useState(false);
 
   const showToast = (msg, type = "info") => {
     setToast({ msg, type });
@@ -110,21 +110,7 @@ export default function App() {
     setEmails(prev => prev.map(em => em.id === id ? { ...em, is_read: 1 } : em));
   };
 
-  const handleVoiceListen = async () => {
-    setVoiceActive(true); setVoiceResult("🎙 Listening...");
-    try {
-      const { data } = await axios.post(`${API}/voice/listen`);
-      setVoiceResult(data.success ? data.response : (data.error || "Could not understand"));
-    } catch { setVoiceResult("Microphone unavailable"); }
-    setVoiceActive(false);
-  };
 
-  const handleVoiceCommand = async () => {
-    if (!voiceInput.trim()) return;
-    try { const { data } = await axios.post(`${API}/voice/command`, { command: voiceInput }); setVoiceResult(data.response); }
-    catch { setVoiceResult("Command failed"); }
-    setVoiceInput("");
-  };
 
   const handleSaveSettings = async () => {
     if (!settingsEmail || !settingsPassword) { setSettingsMsg("❌ Both fields required"); return; }
@@ -283,23 +269,6 @@ export default function App() {
 
       <div style={{ flex:1 }}/>
 
-      {/* Voice */}
-      <div style={{ background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:12, padding:12, marginBottom:10 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"#8b5cf6", marginBottom:8, fontWeight:600 }}>
-          <Volume2 size={13} color="#8b5cf6"/> Voice Assistant
-        </div>
-        <div style={{ display:"flex", gap:6 }}>
-          <input value={voiceInput} onChange={e => setVoiceInput(e.target.value)}
-            onKeyDown={e => e.key==="Enter" && handleVoiceCommand()}
-            placeholder="Ask about emails..."
-            style={{ flex:1, background:"#fff", border:"1px solid #e2e8f0", borderRadius:8, padding:"7px 10px", color:"#1e293b", fontSize:12, outline:"none" }}/>
-          <button onClick={handleVoiceListen} disabled={voiceActive}
-            style={{ width:32, height:32, borderRadius:8, border:"none", display:"grid", placeItems:"center", cursor:"pointer", background: voiceActive?"#8b5cf6":"#ede9fe", flexShrink:0 }}>
-            {voiceActive?<MicOff size={13} color="#fff"/>:<Mic size={13} color="#8b5cf6"/>}
-          </button>
-        </div>
-        {voiceResult && <div style={{ fontSize:11, color:"#64748b", marginTop:6, padding:"6px 8px", background:"#fff", borderRadius:6, border:"1px solid #e2e8f0" }}>{voiceResult}</div>}
-      </div>
 
       {/* Settings btn */}
       <button onClick={() => setShowSettings(true)} style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px", background:"transparent", border:"1px solid #e2e8f0", borderRadius:10, color:"#94a3b8", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
@@ -625,7 +594,7 @@ export default function App() {
       </aside>
 
       {/* Main content */}
-      <main style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"hidden", padding:"28px 36px", gap:20, minWidth:0 }}>
+      <main style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"auto", padding:"28px 36px", gap:20, minWidth:0 }}>
 
         {/* Top bar */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -665,7 +634,7 @@ export default function App() {
         )}
 
         {/* Email table */}
-        <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, overflowY:"auto",minHeight:0 , boxShadow:"0 1px 6px rgba(0,0,0,0.04)", flex:1 }}>
+        <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.04)", flex:1 }}>
           {/* Table header */}
           {filtered.length > 0 && (
             <div style={{ display:"flex", alignItems:"center", padding:"12px 24px", background:"#f8fafc", borderBottom:"2px solid #e2e8f0", fontSize:11, color:"#94a3b8", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.6px", gap:8 }}>
