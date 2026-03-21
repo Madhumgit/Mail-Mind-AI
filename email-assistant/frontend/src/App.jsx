@@ -10,10 +10,7 @@ import {
 // ── API ────────────────────────────────────────────────────────────────────────
 const YOUR_PC_IP  = "10.22.23.35";
 const isCapacitor = typeof window !== "undefined" && window.Capacitor !== undefined;
-const API         = isCapacitor
-  ? `http://${YOUR_PC_IP}:5000/api`
-  : "http://localhost:5000/api";
-
+const API = API_BASE;
 // ── Category config ────────────────────────────────────────────────────────────
 const CATS = {
   All:        { icon: Inbox,         color: "#6366f1", bg: "#eef2ff", label: "All"         },

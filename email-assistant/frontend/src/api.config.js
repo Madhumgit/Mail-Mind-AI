@@ -1,19 +1,24 @@
-// Capacitor apps run on localhost too!
-// So we need a different way to detect mobile
+// api.config.js
+// ─────────────────────────────────────────────────────────────────
+// Backend is deployed on Render — works from anywhere!
+// No more IP address changes needed ✅
+// ─────────────────────────────────────────────────────────────────
 
-const YOUR_PC_IP = "192.168.1.100";
-// Check if running in Capacitor (mobile app)
-const isCapacitor = window.Capacitor !== undefined || 
-                    window.location.protocol === "capacitor:";
+const RENDER_URL = "https://mail-mind-ai.onrender.com";
 
-// Check if regular web browser
-const isWeb = !isCapacitor && (
+const isCapacitor = typeof window !== "undefined" &&
+                    window.Capacitor !== undefined;
+
+const isLocalDev  = !isCapacitor && (
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1"
 );
 
-export const API_BASE = isWeb
-  ? "http://localhost:5000/api"          // laptop browser
-  : `http://${YOUR_PC_IP}:5000/api`;     // phone app
+// Local dev → use local backend
+// Phone app → use Render cloud backend
+// Any other → use Render cloud backend
+export const API_BASE = isLocalDev
+  ? "http://localhost:5000/api"
+  : `${RENDER_URL}/api`;
 
 export default API_BASE;
