@@ -8,11 +8,14 @@ import {
 } from "lucide-react";
 
 // ── API ────────────────────────────────────────────────────────────────────────
-const YOUR_PC_IP  = "10.22.23.35";
 const isCapacitor = typeof window !== "undefined" && window.Capacitor !== undefined;
-const API         = isCapacitor
-  ? `http://${YOUR_PC_IP}:5000/api`
-  : "http://localhost:5000/api";
+const isLocalDev  = !isCapacitor && (
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+);
+const API = isLocalDev
+  ? "http://localhost:5000/api"
+  : "https://mail-mind-ai.onrender.com/api";
 
 // ── Category config ────────────────────────────────────────────────────────────
 const CATS = {
