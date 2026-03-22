@@ -50,7 +50,8 @@ def process_and_store_emails():
         email_data["summary"]    = summary
         email_data["confidence"] = confidence
 
-        result = insert_email(email_data)
+        email_addr, _ = get_user_credentials()
+        result = insert_email(email_data, user_id=email_addr)
         if result:
             processed += 1
 
@@ -73,10 +74,19 @@ def health():
 
 @app.route("/api/emails", methods=["GET"])
 def get_emails():
+    email_addr, _ = get_user_credentials()   # 👈 ADD THIS
+
     category = request.args.get("category", "All")
     priority = request.args.get("priority", "All")
     limit    = int(request.args.get("limit", 100))
-    emails   = get_all_emails(category=category, priority=priority, limit=limit)
+
+    emails = get_all_emails(
+        category=category,
+        priority=priority,
+        limit=limit,
+        user_id=email_addr   # 👈 IMPORTANT
+    )
+
     return jsonify({"emails": emails, "count": len(emails)})
 
 
@@ -107,10 +117,12 @@ def remove_email(email_id):
 
 @app.route("/api/stats", methods=["GET"])
 def stats():
-    data = get_stats()
+    email_addr, _ = get_user_credentials()   # 👈 ADD THIS LINE
+
+    data = get_stats(user_id=email_addr)     # 👈 MODIFY THIS LINE
+
     data["next_scheduled_fetch"] = get_next_run()
     return jsonify(data)
-
 
 @app.route("/api/connection/test", methods=["GET"])
 def connection_test():
@@ -144,9 +156,16 @@ def save_settings():
 
     try:
         success = save_user_settings(email, password)
+
         if success:
-            return jsonify({"success": True, "message": "Settings saved successfully!"})
+            # 💥 ADD THIS LINE
+            from database import clear_emails
+            clear_emails()
+
+            return jsonify({"success": True, "message": "Settings saved & old emails cleared!"})
+
         return jsonify({"success": False, "error": "Failed to save settings"}), 500
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
