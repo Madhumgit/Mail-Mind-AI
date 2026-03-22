@@ -279,7 +279,14 @@ def debug_counts():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/current-email", methods=["GET"])
+def current_email():
+    email_addr, _ = get_user_credentials()
 
+    return jsonify({
+        "email": email_addr,
+        "connected": bool(email_addr)
+    })
 # ─────────────────────────────────────────────
 # Startup
 # ─────────────────────────────────────────────
