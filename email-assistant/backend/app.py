@@ -14,14 +14,14 @@ from smart_reply     import generate_smart_replies
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
-@app.after_request
-def after_request(response):
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
-    response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-    return response
+# ✅ FIXED CORS — exact origin, no wildcard conflict
+CORS(app, resources={r"/api/*": {
+    "origins": ["https://mail-mind-agent.vercel.app"],
+    "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"],
+    "supports_credentials": True
+}})
 
 
 # ─────────────────────────────────────────────
@@ -74,7 +74,7 @@ def health():
 
 @app.route("/api/emails", methods=["GET"])
 def get_emails():
-    email_addr, _ = get_user_credentials()   # 👈 ADD THIS
+    email_addr, _ = get_user_credentials()
 
     category = request.args.get("category", "All")
     priority = request.args.get("priority", "All")
@@ -84,7 +84,7 @@ def get_emails():
         category=category,
         priority=priority,
         limit=limit,
-        user_id=email_addr   # 👈 IMPORTANT
+        user_id=email_addr
     )
 
     return jsonify({"emails": emails, "count": len(emails)})
@@ -117,16 +117,15 @@ def remove_email(email_id):
 
 @app.route("/api/stats", methods=["GET"])
 def stats():
-    email_addr, _ = get_user_credentials()   # 👈 ADD THIS LINE
+    email_addr, _ = get_user_credentials()
 
-    data = get_stats(user_id=email_addr)     # 👈 MODIFY THIS LINE
+    data = get_stats(user_id=email_addr)
 
     data["next_scheduled_fetch"] = get_next_run()
     return jsonify(data)
 
 @app.route("/api/connection/test", methods=["GET"])
 def connection_test():
-    # Load credentials from DB before testing
     email_addr, app_pwd = get_user_credentials()
     if email_addr:
         os.environ["EMAIL_ADDRESS"]      = email_addr
@@ -158,7 +157,6 @@ def save_settings():
         success = save_user_settings(email, password)
 
         if success:
-            # 💥 ADD THIS LINE
             from database import clear_emails
             clear_emails()
 
@@ -279,14 +277,16 @@ def debug_counts():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/api/current-email", methods=["GET"])
 def current_email():
     email_addr, _ = get_user_credentials()
-
     return jsonify({
         "email": email_addr,
         "connected": bool(email_addr)
     })
+
+
 # ─────────────────────────────────────────────
 # Startup
 # ─────────────────────────────────────────────
