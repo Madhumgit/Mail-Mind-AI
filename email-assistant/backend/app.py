@@ -17,7 +17,7 @@ app = Flask(__name__)
 
 # ✅ FIXED CORS — exact origin, no wildcard conflict
 CORS(app, resources={r"/api/*": {
-    "origins": ["https://mail-mind-agent.vercel.app"],
+    "origins": ["https://mailmind-agent.vercel.app"],
     "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization"],
     "supports_credentials": True
