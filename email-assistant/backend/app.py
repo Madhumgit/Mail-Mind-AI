@@ -261,7 +261,7 @@ def debug_counts():
         import imaplib
         email_addr, app_pwd = get_user_credentials()
         mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
-        mail.login(email_addr, app_pwd)
+        mail.login(email_addr, app_pwd.replace(" ", "").strip())
         folder_counts = {}
         for f in ['"[Gmail]/All Mail"', "INBOX", '"[Gmail]/Spam"', '"[Gmail]/Sent Mail"']:
             try:
