@@ -194,3 +194,18 @@ def delete_email(email_id):
     cursor.execute("DELETE FROM emails WHERE id = ?", (email_id,))
     conn.commit()
     conn.close()
+
+def clear_emails(user_id: str = "default"):
+    """Clear all emails for a user."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM emails WHERE user_id = ?", (user_id,))
+        conn.commit()
+        print(f"[DB] Cleared emails for user: {user_id}")
+        return True
+    except Exception as e:
+        print(f"[DB] Clear emails error: {e}")
+        return False
+    finally:
+        conn.close()
