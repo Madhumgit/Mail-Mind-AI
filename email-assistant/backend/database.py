@@ -1,200 +1,137 @@
-import sqlite3
+from supabase import create_client
 import os
 from datetime import datetime
 
-# Use /tmp on Render (cloud) or local path for development
-if os.environ.get("RENDER"):
-    DB_PATH = "/tmp/emails.db"
-else:
-    DB_PATH = os.path.join(os.path.dirname(__file__), "emails.db")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise Exception("Missing Supabase credentials")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+# ───────────────── USER SETTINGS ─────────────────
 
-
-def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # ── Emails table ───────────────────────────────────────────────────────────
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS emails (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            message_id TEXT UNIQUE,
-            subject TEXT,
-            sender TEXT,
-            category TEXT,
-            priority TEXT,
-            summary TEXT,
-            body TEXT,
-            timestamp TEXT,
-            is_read INTEGER DEFAULT 0,
-            user_id TEXT DEFAULT 'default',
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    # ── User settings table ────────────────────────────────────────────────────
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT UNIQUE DEFAULT 'default',
-            email_address TEXT,
-            app_password TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-    print("[DB] Database initialized.")
-
-
-# ── User Settings ──────────────────────────────────────────────────────────────
-
-def save_user_settings(email_address: str, app_password: str, user_id: str = "default"):
-    """Save Gmail credentials to database."""
-    conn = get_connection()
-    cursor = conn.cursor()
+def save_user_settings(email, password, user_id="default"):
     try:
-        cursor.execute("""
-            INSERT INTO user_settings (user_id, email_address, app_password, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                email_address = excluded.email_address,
-                app_password  = excluded.app_password,
-                updated_at    = excluded.updated_at
-        """, (user_id, email_address, app_password, datetime.now().isoformat()))
-        conn.commit()
-        # Update env for current session
-        os.environ["EMAIL_ADDRESS"]      = email_address
-        os.environ["EMAIL_APP_PASSWORD"] = app_password
+        data = {
+            "user_id": user_id,
+            "email_address": email,
+            "app_password": password,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        supabase.table("user_settings").upsert(data).execute()
+
+        os.environ["EMAIL_ADDRESS"] = email
+        os.environ["EMAIL_APP_PASSWORD"] = password
+
         return True
     except Exception as e:
-        print(f"[DB] Save settings error: {e}")
+        print("Save error:", e)
         return False
-    finally:
-        conn.close()
 
 
-def get_user_settings(user_id: str = "default"):
-    """Get Gmail credentials from database."""
-    conn = get_connection()
-    cursor = conn.cursor()
+def get_user_settings(user_id="default"):
     try:
-        cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
-        if row:
+        res = supabase.table("user_settings").select("*").eq("user_id", user_id).execute()
+
+        if res.data:
+            row = res.data[0]
             return {
-                "email":      row["email_address"],
-                "configured": bool(row["email_address"] and row["app_password"]),
+                "email": row["email_address"],
+                "configured": bool(row["email_address"] and row["app_password"])
             }
-        email = os.getenv("EMAIL_ADDRESS", "")
-        return {"email": email, "configured": bool(email and os.getenv("EMAIL_APP_PASSWORD"))}
-    except Exception as e:
-        print(f"[DB] Get settings error: {e}")
+
         return {"email": "", "configured": False}
-    finally:
-        conn.close()
+    except Exception as e:
+        print("Get settings error:", e)
+        return {"email": "", "configured": False}
 
 
-def get_user_credentials(user_id: str = "default"):
-    """Get full credentials including password."""
-    conn = get_connection()
-    cursor = conn.cursor()
+def get_user_credentials(user_id="default"):
     try:
-        cursor.execute(
-            "SELECT email_address, app_password FROM user_settings WHERE user_id = ?",
-            (user_id,)
-        )
-        row = cursor.fetchone()
-        if row and row["email_address"] and row["app_password"]:
+        res = supabase.table("user_settings").select("*").eq("user_id", user_id).execute()
+
+        if res.data:
+            row = res.data[0]
             return row["email_address"], row["app_password"]
-        return os.getenv("EMAIL_ADDRESS", ""), os.getenv("EMAIL_APP_PASSWORD", "")
+
+        return "", ""
     except Exception as e:
-        print(f"[DB] Get credentials error: {e}")
-        return os.getenv("EMAIL_ADDRESS", ""), os.getenv("EMAIL_APP_PASSWORD", "")
-    finally:
-        conn.close()
+        print("Credential error:", e)
+        return "", ""
 
 
-# ── Email Operations ───────────────────────────────────────────────────────────
+# ───────────────── EMAILS ─────────────────
 
-def insert_email(email_data, user_id: str = "default"):
-    conn = get_connection()
-    cursor = conn.cursor()
+def insert_email(email_data, user_id):
     try:
-        cursor.execute("""
-            INSERT OR IGNORE INTO emails
-            (message_id, subject, sender, category, priority, summary, body, timestamp, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            email_data.get("message_id"),
-            email_data.get("subject"),
-            email_data.get("sender"),
-            email_data.get("category"),
-            email_data.get("priority"),
-            email_data.get("summary"),
-            email_data.get("body"),
-            email_data.get("timestamp"),
-            user_id,
-        ))
-        conn.commit()
-        return cursor.lastrowid
+        data = {
+            "message_id": email_data.get("message_id"),
+            "subject": email_data.get("subject"),
+            "sender": email_data.get("sender"),
+            "category": email_data.get("category"),
+            "priority": email_data.get("priority"),
+            "summary": email_data.get("summary"),
+            "body": email_data.get("body"),
+            "timestamp": email_data.get("timestamp"),
+            "user_id": user_id
+        }
+
+        return supabase.table("emails").insert(data).execute().data
     except Exception as e:
-        print(f"[DB] Insert error: {e}")
+        print("Insert error:", e)
         return None
-    finally:
-        conn.close()
 
 
-def get_all_emails(category=None, priority=None, limit=100, user_id: str = "default"):
-    conn = get_connection()
-    cursor = conn.cursor()
-    query  = "SELECT * FROM emails WHERE user_id = ?"
-    params = [user_id]
-    if category and category != "All":
-        query += " AND category = ?"
-        params.append(category)
-    if priority and priority != "All":
-        query += " AND priority = ?"
-        params.append(priority)
-    query += " ORDER BY timestamp DESC LIMIT ?"
-    params.append(limit)
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+def get_all_emails(category=None, priority=None, limit=100, user_id="default"):
+    try:
+        query = supabase.table("emails").select("*").eq("user_id", user_id)
+
+        if category and category != "All":
+            query = query.eq("category", category)
+
+        if priority and priority != "All":
+            query = query.eq("priority", priority)
+
+        return query.order("timestamp", desc=True).limit(limit).execute().data
+    except Exception as e:
+        print("Fetch error:", e)
+        return []
 
 
-def get_stats(user_id: str = "default"):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) as total FROM emails WHERE user_id = ?", (user_id,))
-    total = cursor.fetchone()["total"]
-    cursor.execute("SELECT category, COUNT(*) as count FROM emails WHERE user_id = ? GROUP BY category", (user_id,))
-    categories = {row["category"]: row["count"] for row in cursor.fetchall()}
-    cursor.execute("SELECT priority, COUNT(*) as count FROM emails WHERE user_id = ? GROUP BY priority", (user_id,))
-    priorities  = {row["priority"]: row["count"] for row in cursor.fetchall()}
-    conn.close()
-    return {"total": total, "categories": categories, "priorities": priorities}
+def get_stats(user_id="default"):
+    try:
+        emails = supabase.table("emails").select("*").eq("user_id", user_id).execute().data
+
+        total = len(emails)
+        categories = {}
+        priorities = {}
+
+        for e in emails:
+            categories[e["category"]] = categories.get(e["category"], 0) + 1
+            priorities[e["priority"]] = priorities.get(e["priority"], 0) + 1
+
+        return {"total": total, "categories": categories, "priorities": priorities}
+    except Exception as e:
+        print("Stats error:", e)
+        return {"total": 0, "categories": {}, "priorities": {}}
 
 
 def mark_as_read(email_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE emails SET is_read = 1 WHERE id = ?", (email_id,))
-    conn.commit()
-    conn.close()
+    supabase.table("emails").update({"is_read": True}).eq("id", email_id).execute()
 
 
 def delete_email(email_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM emails WHERE id = ?", (email_id,))
-    conn.commit()
-    conn.close()
+    supabase.table("emails").delete().eq("id", email_id).execute()
+
+
+def clear_emails(user_id="default"):
+    supabase.table("emails").delete().eq("user_id", user_id).execute()
+
+
+# No init needed for Supabase
+def init_db():
+    print("Using Supabase PostgreSQL ✅")
