@@ -59,6 +59,12 @@ def process_and_store_emails():
     return processed
 
 
+# ── Initialize DB + scheduler on startup (works with gunicorn) ────────────────
+init_db()
+set_processor(process_and_store_emails)
+start_scheduler(interval_minutes=int(os.getenv("SCHEDULER_INTERVAL_MINUTES", 30)))
+
+
 # ─────────────────────────────────────────────
 # Health
 # ─────────────────────────────────────────────
@@ -118,11 +124,10 @@ def remove_email(email_id):
 @app.route("/api/stats", methods=["GET"])
 def stats():
     email_addr, _ = get_user_credentials()
-
     data = get_stats(user_id=email_addr)
-
     data["next_scheduled_fetch"] = get_next_run()
     return jsonify(data)
+
 
 @app.route("/api/connection/test", methods=["GET"])
 def connection_test():
@@ -159,7 +164,6 @@ def save_settings():
         if success:
             from database import clear_emails
             clear_emails()
-
             return jsonify({"success": True, "message": "Settings saved & old emails cleared!"})
 
         return jsonify({"success": False, "error": "Failed to save settings"}), 500
@@ -288,14 +292,10 @@ def current_email():
 
 
 # ─────────────────────────────────────────────
-# Startup
+# Startup (local dev only)
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    init_db()
-    set_processor(process_and_store_emails)
-    interval = int(os.getenv("SCHEDULER_INTERVAL_MINUTES", 30))
-    start_scheduler(interval_minutes=interval)
     port = int(os.getenv("PORT", os.getenv("FLASK_PORT", 5000)))
     print(f"[App] Starting Email Assistant API on port {port}")
     app.run(host="0.0.0.0", debug=False, port=port, use_reloader=False)
