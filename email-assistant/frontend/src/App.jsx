@@ -17,7 +17,6 @@ const API = isLocalDev
   ? "http://localhost:5000/api"
   : "https://mail-mind-ai.onrender.com/api";
 
-// ── LocalStorage key for persisting user_id across sessions ──────────────────
 const USER_ID_KEY = "mailmind_user_id";
 
 // ── Category config ────────────────────────────────────────────────────────────
@@ -48,26 +47,23 @@ function useIsMobile() {
 export default function App() {
   const isMobile = useIsMobile();
 
-  // ── Core state ───────────────────────────────────────────────────────────────
-  // userId is the email address — persisted in localStorage so returning
-  // users don't need to re-enter their credentials.
-  const [userId,  setUserId]  = useState(() => localStorage.getItem(USER_ID_KEY) || "");
-  const [emails,  setEmails]  = useState([]);
-  const [stats,   setStats]   = useState({});
+  const [userId,        setUserId]        = useState(() => localStorage.getItem(USER_ID_KEY) || "");
+  const [emails,        setEmails]        = useState([]);
+  const [stats,         setStats]         = useState({});
   const [activeTab,     setActiveTab]     = useState("All");
   const [selectedEmail, setSelectedEmail] = useState(null);
-  const [loading,   setLoading]   = useState(false);
-  const [fetching,  setFetching]  = useState(false);
-  const [connected, setConnected] = useState(null);
+  const [loading,       setLoading]       = useState(false);
+  const [fetching,      setFetching]      = useState(false);
+  const [connected,     setConnected]     = useState(null);
   const [searchQuery,   setSearchQuery]   = useState("");
   const [toast,         setToast]         = useState(null);
   const [showSidebar,   setShowSidebar]   = useState(false);
   const [showSettings,  setShowSettings]  = useState(false);
   const [settingsEmail,    setSettingsEmail]    = useState("");
   const [settingsPassword, setSettingsPassword] = useState("");
-  const [settingsMsg,  setSettingsMsg]  = useState("");
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [settingsMsg,      setSettingsMsg]      = useState("");
+  const [savingSettings,   setSavingSettings]   = useState(false);
+  const [showPassword,     setShowPassword]     = useState(false);
   const [smartReplies,   setSmartReplies]   = useState({});
   const [loadingReplies, setLoadingReplies] = useState({});
   const [copiedReply,    setCopiedReply]    = useState(null);
@@ -77,17 +73,13 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ── Persist userId to localStorage whenever it changes ───────────────────────
   useEffect(() => {
-    if (userId) {
-      localStorage.setItem(USER_ID_KEY, userId);
-    }
+    if (userId) localStorage.setItem(USER_ID_KEY, userId);
   }, [userId]);
 
-  // ── Helper: attach user_id to every request ──────────────────────────────────
   const withUser = (params = {}) => ({ ...params, user_id: userId });
 
-  // ── Data loaders ─────────────────────────────────────────────────────────────
+  // ── Data loaders ──────────────────────────────────────────────────────────────
   const loadEmails = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -120,22 +112,20 @@ export default function App() {
     }
   }, [userId]);
 
-  // On mount or userId change: load everything
   useEffect(() => {
     if (userId) {
       loadEmails();
       loadStats();
       checkConn();
-      setSettingsEmail(userId); // pre-fill settings modal with known email
+      setSettingsEmail(userId);
     } else {
-      // First-time visitor: show settings modal
       setShowSettings(true);
     }
   }, [userId]);
 
   useEffect(() => { loadEmails(); }, [loadEmails]);
 
-  // ── Actions ──────────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────────────────────────
   const fetchNow = async () => {
     if (!connected) { setShowSettings(true); showToast("Configure Gmail first", "error"); return; }
     setFetching(true);
@@ -165,9 +155,6 @@ export default function App() {
     setEmails(prev => prev.map(em => em.id === id ? { ...em, is_read: 1 } : em));
   };
 
-  // ── Save Settings ─────────────────────────────────────────────────────────────
-  // On first save: sets userId so all future requests are scoped to this user.
-  // On return visit: userId is already in localStorage, modal never shown.
   const handleSaveSettings = async () => {
     if (!settingsEmail || !settingsPassword) {
       setSettingsMsg("❌ Both fields required");
@@ -179,11 +166,9 @@ export default function App() {
       const { data } = await axios.post(`${API}/settings`, {
         email:        settingsEmail.trim().toLowerCase(),
         app_password: settingsPassword,
-        user_id:      settingsEmail.trim().toLowerCase(),  // ← scoped save
+        user_id:      settingsEmail.trim().toLowerCase(),
       });
-
       if (data.success) {
-        // Persist the user identity
         const newUserId = settingsEmail.trim().toLowerCase();
         setUserId(newUserId);
         setSettingsMsg("✅ Saved!");
@@ -202,7 +187,6 @@ export default function App() {
     setSavingSettings(false);
   };
 
-  // ── Smart Replies ─────────────────────────────────────────────────────────────
   const fetchSmartReplies = async (em) => {
     if (smartReplies[em.id]) return;
     setLoadingReplies(prev => ({ ...prev, [em.id]: true }));
@@ -247,10 +231,11 @@ export default function App() {
       onClick={() => { if (userId) setShowSettings(false); }}
     >
       <div
-        style={{ background:"#fff", borderRadius:16, width: isMobile?"92vw":480,
+        style={{ background:"#fff", borderRadius:16, width: isMobile ? "92vw" : 480,
                  padding:28, boxShadow:"0 24px 64px rgba(0,0,0,0.2)" }}
         onClick={e => e.stopPropagation()}
       >
+        {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10, fontSize:17, fontWeight:700, color:"#1e293b" }}>
             <div style={{ width:34, height:34, background:"#eef2ff", borderRadius:9, display:"grid", placeItems:"center" }}>
@@ -266,6 +251,7 @@ export default function App() {
           )}
         </div>
 
+        {/* Instructions */}
         <div style={{ background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:10,
                       padding:"14px 16px", marginBottom:18 }}>
           <div style={{ fontSize:12, color:"#6366f1", fontWeight:700, marginBottom:8 }}>
@@ -276,22 +262,32 @@ export default function App() {
             "Enable 2-Step Verification",
             "Go to myaccount.google.com/apppasswords",
             "Create password named 'MailMind'",
-            "Copy the 16-character password"
+            "Copy the 16-character password",
           ].map((s, i) => (
             <div key={i} style={{ display:"flex", gap:8, fontSize:12, color:"#64748b", marginBottom:4 }}>
               <span style={{ width:18, height:18, background:"#eef2ff", color:"#6366f1", borderRadius:"50%",
                              display:"inline-flex", alignItems:"center", justifyContent:"center",
-                             fontSize:10, fontWeight:700, flexShrink:0 }}>{i+1}</span>
+                             fontSize:10, fontWeight:700, flexShrink:0 }}>{i + 1}</span>
               {s}
             </div>
           ))}
         </div>
 
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+
+          {/* Email field */}
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <label style={{ fontSize:12, color:"#475569", fontWeight:600 }}>Gmail Address</label>
+            <label
+              htmlFor="settings-email"
+              style={{ fontSize:12, color:"#475569", fontWeight:600 }}
+            >
+              Gmail Address
+            </label>
             <input
+              id="settings-email"
+              name="email"
               type="email"
+              autoComplete="email"
               value={settingsEmail}
               onChange={e => setSettingsEmail(e.target.value)}
               placeholder="you@gmail.com"
@@ -299,11 +295,21 @@ export default function App() {
                        padding:"11px 14px", color:"#1e293b", fontSize:14, outline:"none", width:"100%" }}
             />
           </div>
+
+          {/* Password field */}
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <label style={{ fontSize:12, color:"#475569", fontWeight:600 }}>App Password</label>
+            <label
+              htmlFor="settings-password"
+              style={{ fontSize:12, color:"#475569", fontWeight:600 }}
+            >
+              App Password
+            </label>
             <div style={{ position:"relative" }}>
               <input
+                id="settings-password"
+                name="app_password"
                 type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
                 value={settingsPassword}
                 onChange={e => setSettingsPassword(e.target.value)}
                 placeholder="xxxx xxxx xxxx xxxx"
@@ -345,7 +351,7 @@ export default function App() {
     </div>
   );
 
-  // ── SIDEBAR CONTENT ───────────────────────────────────────────────────────────
+  // ── SIDEBAR ───────────────────────────────────────────────────────────────────
   const SidebarContent = () => (
     <>
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:24,
@@ -361,7 +367,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Show logged-in email */}
       {userId && (
         <div style={{ fontSize:11, color:"#64748b", background:"#f1f5f9", borderRadius:8,
                       padding:"6px 10px", marginBottom:12, wordBreak:"break-all" }}>
@@ -380,7 +385,7 @@ export default function App() {
             : <WifiOff size={13} color="#dc2626"/>
         }
         <span style={{ fontSize:12, flex:1, fontWeight:500,
-                        color: connected ? "#16a34a" : connected === false ? "#dc2626" : "#64748b" }}>
+                       color: connected ? "#16a34a" : connected === false ? "#dc2626" : "#64748b" }}>
           {connected === null ? "Checking..." : connected ? "Gmail Connected" : "Not Connected"}
         </span>
         {!connected && connected !== null && (
@@ -403,9 +408,8 @@ export default function App() {
             <button key={cat}
               onClick={() => { setActiveTab(cat); setShowSidebar(false); }}
               style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px",
-                       border:"none", borderRadius:10, fontSize:14, width:"100%",
-                       textAlign:"left", cursor:"pointer", fontFamily:"inherit",
-                       transition:"all 0.15s",
+                       border:"none", borderRadius:10, fontSize:14, width:"100%", textAlign:"left",
+                       cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s",
                        background: active ? cfg.bg : "transparent",
                        color:      active ? cfg.color : "#475569",
                        fontWeight: active ? 600 : 400,
@@ -433,7 +437,59 @@ export default function App() {
     </>
   );
 
-  // ── EMAIL CARD (mobile) ───────────────────────────────────────────────────────
+  // ── SMART REPLIES PANEL ───────────────────────────────────────────────────────
+  const SmartRepliesPanel = ({ em }) => {
+    const replies  = smartReplies[em.id] || [];
+    const loadingR = loadingReplies[em.id];
+    return (
+      <>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+          <div style={{ width:26, height:26, background:"linear-gradient(135deg,#6366f1,#8b5cf6)",
+                        borderRadius:7, display:"grid", placeItems:"center" }}>
+            <Zap size={13} color="#fff"/>
+          </div>
+          <span style={{ fontSize:13, fontWeight:700, color:"#1e293b" }}>Smart Replies</span>
+          <span style={{ fontSize:11, color:"#94a3b8", background:"#f1f5f9",
+                         padding:"2px 8px", borderRadius:20 }}>AI Generated</span>
+        </div>
+        {loadingR ? (
+          <div style={{ display:"flex", alignItems:"center", gap:8, color:"#94a3b8", fontSize:13 }}>
+            <RefreshCw size={14} style={{ animation:"spin 1s linear infinite" }} color="#6366f1"/>
+            Generating...
+          </div>
+        ) : replies.length > 0 ? (
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+            {replies.map((r, idx) => (
+              <div key={idx} style={{ flex:1, minWidth:200, background:"#fff",
+                                      border:"1px solid #e2e8f0", borderRadius:10, padding:"12px 14px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:"#6366f1", background:"#eef2ff",
+                                 padding:"2px 8px", borderRadius:20 }}>{r.label}</span>
+                  <button onClick={() => handleCopyReply(r.reply, idx)}
+                    style={{ display:"flex", alignItems:"center", gap:4, fontSize:11,
+                             color:      copiedReply === idx ? "#10b981" : "#64748b",
+                             background: copiedReply === idx ? "#dcfce7" : "#f8fafc",
+                             border:`1px solid ${copiedReply === idx ? "#86efac" : "#e2e8f0"}`,
+                             borderRadius:6, padding:"3px 8px", cursor:"pointer" }}>
+                    {copiedReply === idx ? <Check size={11}/> : <Copy size={11}/>}
+                    {copiedReply === idx ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+                <div style={{ fontSize:13, color:"#334155", lineHeight:1.7, whiteSpace:"pre-wrap",
+                              background:"#f8fafc", borderRadius:6, padding:"8px 10px" }}>{r.reply}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display:"flex", alignItems:"center", gap:8, color:"#94a3b8", fontSize:13 }}>
+            <MessageSquare size={14} color="#cbd5e1"/> No smart replies available.
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // ── MOBILE CARD ───────────────────────────────────────────────────────────────
   const MobileCard = ({ em }) => {
     const cfg        = CATS[em.category] || CATS.Other;
     const Icon       = cfg.icon;
@@ -450,7 +506,10 @@ export default function App() {
         }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
             <div style={{ display:"flex", alignItems:"center", gap:6, flex:1, minWidth:0 }}>
-              {!em.is_read && <span style={{ width:7, height:7, borderRadius:"50%", background:"#6366f1", flexShrink:0, display:"block" }}/>}
+              {!em.is_read && (
+                <span style={{ width:7, height:7, borderRadius:"50%", background:"#6366f1",
+                               flexShrink:0, display:"block" }}/>
+              )}
               <span style={{ fontSize:14, fontWeight: em.is_read ? 400 : 700, color:"#1e293b",
                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                 {em.subject || "No Subject"}
@@ -515,13 +574,15 @@ export default function App() {
             ) : replies.length > 0 ? (
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {replies.map((r, idx) => (
-                  <div key={idx} style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:10, padding:"10px 12px" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <div key={idx} style={{ background:"#fff", border:"1px solid #e2e8f0",
+                                          borderRadius:10, padding:"10px 12px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between",
+                                  alignItems:"center", marginBottom:6 }}>
                       <span style={{ fontSize:11, fontWeight:700, color:"#6366f1", background:"#eef2ff",
                                      padding:"2px 8px", borderRadius:20 }}>{r.label}</span>
                       <button onClick={() => handleCopyReply(r.reply, idx)}
                         style={{ display:"flex", alignItems:"center", gap:4, fontSize:11,
-                                 color: copiedReply === idx ? "#10b981" : "#64748b",
+                                 color:      copiedReply === idx ? "#10b981" : "#64748b",
                                  background: copiedReply === idx ? "#dcfce7" : "#f8fafc",
                                  border:`1px solid ${copiedReply === idx ? "#86efac" : "#e2e8f0"}`,
                                  borderRadius:6, padding:"3px 8px", cursor:"pointer" }}>
@@ -545,13 +606,11 @@ export default function App() {
     );
   };
 
-  // ── DESKTOP EMAIL ROW ─────────────────────────────────────────────────────────
+  // ── DESKTOP ROW ───────────────────────────────────────────────────────────────
   const DesktopRow = ({ em }) => {
     const cfg        = CATS[em.category] || CATS.Other;
     const Icon       = cfg.icon;
     const isSelected = selectedEmail?.id === em.id;
-    const replies    = smartReplies[em.id] || [];
-    const loadingR   = loadingReplies[em.id];
 
     return (
       <div>
@@ -563,7 +622,9 @@ export default function App() {
           opacity: em.is_read ? 0.65 : 1, transition:"background 0.1s",
         }}>
           <div style={{ width:10, flexShrink:0 }}>
-            {!em.is_read && <span style={{ width:8, height:8, borderRadius:"50%", background:"#6366f1", display:"block" }}/>}
+            {!em.is_read && (
+              <span style={{ width:8, height:8, borderRadius:"50%", background:"#6366f1", display:"block" }}/>
+            )}
           </div>
           <div style={{ flex:4, minWidth:0, paddingRight:16 }}>
             <div style={{ fontSize:14, fontWeight: em.is_read ? 400 : 700, color:"#1e293b",
@@ -572,18 +633,21 @@ export default function App() {
             </div>
           </div>
           <div style={{ flex:2, minWidth:0, paddingRight:16 }}>
-            <div style={{ fontSize:13, color:"#64748b", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+            <div style={{ fontSize:13, color:"#64748b", whiteSpace:"nowrap",
+                          overflow:"hidden", textOverflow:"ellipsis" }}>
               {em.sender?.split("<")[0].trim()}
             </div>
           </div>
           <div style={{ flex:3, minWidth:0, paddingRight:16 }}>
-            <div style={{ fontSize:13, color:"#94a3b8", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+            <div style={{ fontSize:13, color:"#94a3b8", whiteSpace:"nowrap",
+                          overflow:"hidden", textOverflow:"ellipsis" }}>
               {em.summary}
             </div>
           </div>
           <div style={{ flex:1, display:"flex", justifyContent:"center" }}>
-            <span style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize:11, fontWeight:600,
-                           padding:"3px 10px", borderRadius:20, background:cfg.bg, color:cfg.color, whiteSpace:"nowrap" }}>
+            <span style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize:11,
+                           fontWeight:600, padding:"3px 10px", borderRadius:20,
+                           background:cfg.bg, color:cfg.color, whiteSpace:"nowrap" }}>
               <Icon size={10}/>{em.category}
             </span>
           </div>
@@ -619,52 +683,12 @@ export default function App() {
               {em.timestamp ? new Date(em.timestamp).toLocaleString() : ""}
             </div>
             {em.body && (
-              <div style={{ fontSize:14, color:"#334155", lineHeight:1.9, whiteSpace:"pre-wrap", marginBottom:16 }}>
+              <div style={{ fontSize:14, color:"#334155", lineHeight:1.9,
+                            whiteSpace:"pre-wrap", marginBottom:16 }}>
                 {em.body.slice(0, 1000)}{em.body.length > 1000 ? "..." : ""}
               </div>
             )}
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
-              <div style={{ width:26, height:26, background:"linear-gradient(135deg,#6366f1,#8b5cf6)",
-                            borderRadius:7, display:"grid", placeItems:"center" }}>
-                <Zap size={13} color="#fff"/>
-              </div>
-              <span style={{ fontSize:13, fontWeight:700, color:"#1e293b" }}>Smart Replies</span>
-              <span style={{ fontSize:11, color:"#94a3b8", background:"#f1f5f9",
-                             padding:"2px 8px", borderRadius:20 }}>AI Generated</span>
-            </div>
-            {loadingR ? (
-              <div style={{ display:"flex", alignItems:"center", gap:8, color:"#94a3b8", fontSize:13 }}>
-                <RefreshCw size={14} style={{ animation:"spin 1s linear infinite" }} color="#6366f1"/>
-                Generating...
-              </div>
-            ) : replies.length > 0 ? (
-              <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-                {replies.map((r, idx) => (
-                  <div key={idx} style={{ flex:1, minWidth:200, background:"#fff",
-                                          border:"1px solid #e2e8f0", borderRadius:10, padding:"12px 14px" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                      <span style={{ fontSize:11, fontWeight:700, color:"#6366f1", background:"#eef2ff",
-                                     padding:"2px 8px", borderRadius:20 }}>{r.label}</span>
-                      <button onClick={() => handleCopyReply(r.reply, idx)}
-                        style={{ display:"flex", alignItems:"center", gap:4, fontSize:11,
-                                 color: copiedReply === idx ? "#10b981" : "#64748b",
-                                 background: copiedReply === idx ? "#dcfce7" : "#f8fafc",
-                                 border:`1px solid ${copiedReply === idx ? "#86efac" : "#e2e8f0"}`,
-                                 borderRadius:6, padding:"3px 8px", cursor:"pointer" }}>
-                        {copiedReply === idx ? <Check size={11}/> : <Copy size={11}/>}
-                        {copiedReply === idx ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-                    <div style={{ fontSize:13, color:"#334155", lineHeight:1.7, whiteSpace:"pre-wrap",
-                                  background:"#f8fafc", borderRadius:6, padding:"8px 10px" }}>{r.reply}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ display:"flex", alignItems:"center", gap:8, color:"#94a3b8", fontSize:13 }}>
-                <MessageSquare size={14} color="#cbd5e1"/> No smart replies available.
-              </div>
-            )}
+            <SmartRepliesPanel em={em}/>
           </div>
         )}
       </div>
@@ -683,7 +707,6 @@ export default function App() {
       ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:10px; }
       @keyframes spin { to { transform:rotate(360deg); } }
       @keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
-      @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
       input::placeholder { color:#94a3b8; }
       button { font-family:'Inter',sans-serif; }
       .email-row:hover { background:#f8f9ff !important; }
@@ -692,8 +715,8 @@ export default function App() {
 
   const Toast = () => toast ? (
     <div style={{ position:"fixed", top:20, right:20, padding:"12px 18px", borderRadius:12,
-                  fontSize:13, fontWeight:500, zIndex:99999, boxShadow:"0 4px 20px rgba(0,0,0,0.12)",
-                  animation:"fadeIn 0.2s ease",
+                  fontSize:13, fontWeight:500, zIndex:99999,
+                  boxShadow:"0 4px 20px rgba(0,0,0,0.12)", animation:"fadeIn 0.2s ease",
                   background: toast.type === "error" ? "#fee2e2" : toast.type === "success" ? "#dcfce7" : "#eef2ff",
                   color:      toast.type === "error" ? "#991b1b" : toast.type === "success" ? "#166534" : "#3730a3"
     }}>{toast.msg}</div>
@@ -714,12 +737,14 @@ export default function App() {
               onClick={() => setShowSidebar(false)}/>
             <div style={{ position:"absolute", left:0, top:0, bottom:0, width:"80%", maxWidth:300,
                           background:"#fff", padding:"24px 16px", overflowY:"auto",
-                          display:"flex", flexDirection:"column", boxShadow:"4px 0 20px rgba(0,0,0,0.15)" }}>
+                          display:"flex", flexDirection:"column",
+                          boxShadow:"4px 0 20px rgba(0,0,0,0.15)" }}>
               <SidebarContent/>
             </div>
           </div>
         )}
 
+        {/* Mobile header */}
         <div style={{ background:"#fff", padding:"14px 16px", display:"flex", alignItems:"center",
                       justifyContent:"space-between", borderBottom:"1px solid #e2e8f0", flexShrink:0 }}>
           <button onClick={() => setShowSidebar(true)}
@@ -742,6 +767,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* Category tabs */}
         <div style={{ background:"#fff", borderBottom:"1px solid #e2e8f0", padding:"0 16px",
                       flexShrink:0, overflowX:"auto", display:"flex", gap:4, scrollbarWidth:"none" }}>
           {Object.entries(CATS).map(([cat, cfg]) => {
@@ -750,10 +776,11 @@ export default function App() {
             return (
               <button key={cat} onClick={() => setActiveTab(cat)} style={{
                 display:"inline-flex", alignItems:"center", gap:5, padding:"10px 12px",
-                border:"none", borderBottom: active ? `2px solid ${cfg.color}` : "2px solid transparent",
+                border:"none",
+                borderBottom: active ? `2px solid ${cfg.color}` : "2px solid transparent",
                 background:"transparent", color: active ? cfg.color : "#94a3b8",
-                fontSize:13, fontWeight: active ? 600 : 400, cursor:"pointer",
-                whiteSpace:"nowrap", fontFamily:"inherit",
+                fontSize:13, fontWeight: active ? 600 : 400,
+                cursor:"pointer", whiteSpace:"nowrap", fontFamily:"inherit",
               }}>
                 {cfg.label}
                 {count > 0 && (
@@ -766,14 +793,22 @@ export default function App() {
           })}
         </div>
 
-        <div style={{ padding:"12px 16px", background:"#fff", borderBottom:"1px solid #f1f5f9", flexShrink:0 }}>
+        {/* Search */}
+        <div style={{ padding:"12px 16px", background:"#fff",
+                      borderBottom:"1px solid #f1f5f9", flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, background:"#f8fafc",
                         border:"1px solid #e2e8f0", borderRadius:10, padding:"9px 12px" }}>
             <Search size={15} color="#94a3b8"/>
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            <input
+              id="mobile-search"
+              name="search"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search emails..."
+              autoComplete="off"
               style={{ background:"transparent", border:"none", color:"#1e293b",
-                       fontSize:14, outline:"none", flex:1 }}/>
+                       fontSize:14, outline:"none", flex:1 }}
+            />
             {searchQuery && (
               <button onClick={() => setSearchQuery("")}
                 style={{ background:"none", border:"none", cursor:"pointer", display:"flex" }}>
@@ -791,7 +826,9 @@ export default function App() {
             <span style={{ flex:1 }}>Gmail not connected.</span>
             <button onClick={() => setShowSettings(true)}
               style={{ fontSize:12, color:"#6366f1", background:"#eef2ff", border:"none",
-                       borderRadius:6, padding:"3px 10px", fontWeight:600, cursor:"pointer" }}>Setup</button>
+                       borderRadius:6, padding:"3px 10px", fontWeight:600, cursor:"pointer" }}>
+              Setup
+            </button>
           </div>
         )}
 
@@ -818,7 +855,7 @@ export default function App() {
     );
   }
 
-  // ── DESKTOP LAYOUT ─────────────────────────────────────────────────────────────
+  // ── DESKTOP LAYOUT ────────────────────────────────────────────────────────────
   return (
     <div style={{ display:"flex", height:"100vh", background:"#f1f5f9",
                   fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
@@ -835,6 +872,7 @@ export default function App() {
       <main style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"auto",
                      padding:"28px 36px", gap:20, minWidth:0 }}>
 
+        {/* Top bar */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <div>
             <h1 style={{ fontSize:28, fontWeight:800, color:"#1e293b", letterSpacing:"-0.5px" }}>
@@ -843,7 +881,8 @@ export default function App() {
             <p style={{ fontSize:13, color:"#94a3b8", marginTop:3 }}>
               {filtered.length} message{filtered.length !== 1 ? "s" : ""}
               {stats.next_scheduled_fetch && (
-                <span> · Auto-sync at {new Date(stats.next_scheduled_fetch).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}</span>
+                <span> · Auto-sync at {new Date(stats.next_scheduled_fetch)
+                  .toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}</span>
               )}
             </p>
           </div>
@@ -852,10 +891,16 @@ export default function App() {
                           border:"1px solid #e2e8f0", borderRadius:10, padding:"10px 16px",
                           minWidth:260, boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
               <Search size={16} color="#94a3b8"/>
-              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              <input
+                id="desktop-search"
+                name="search"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search emails..."
+                autoComplete="off"
                 style={{ background:"transparent", border:"none", color:"#1e293b",
-                         fontSize:14, outline:"none", flex:1 }}/>
+                         fontSize:14, outline:"none", flex:1 }}
+              />
               {searchQuery && (
                 <button onClick={() => setSearchQuery("")}
                   style={{ background:"none", border:"none", cursor:"pointer", display:"flex" }}>
@@ -883,8 +928,8 @@ export default function App() {
 
         {connected === false && (
           <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 18px",
-                        background:"#fffbeb", border:"1px solid #fde68a", borderRadius:12,
-                        fontSize:14, color:"#92400e" }}>
+                        background:"#fffbeb", border:"1px solid #fde68a",
+                        borderRadius:12, fontSize:14, color:"#92400e" }}>
             <AlertCircle size={16} color="#d97706"/>
             <span style={{ flex:1 }}>Gmail not connected. Configure credentials to start syncing.</span>
             <button onClick={() => setShowSettings(true)}
@@ -895,6 +940,7 @@ export default function App() {
           </div>
         )}
 
+        {/* Email table */}
         <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14,
                       overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.04)", flex:1 }}>
           {filtered.length > 0 && (
