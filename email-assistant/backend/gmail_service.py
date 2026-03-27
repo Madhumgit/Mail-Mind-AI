@@ -5,18 +5,12 @@ import re
 from email.header import decode_header
 from datetime import datetime
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 
-load_dotenv()
+IMAP_SERVER = "imap.gmail.com"
+IMAP_PORT   = 993
 
-EMAIL_ADDRESS      = os.getenv("EMAIL_ADDRESS")
-EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD", "").replace(" ", "").strip()
-IMAP_SERVER        = "imap.gmail.com"
-IMAP_PORT          = 993
-
-# All Gmail folders to fetch from
 GMAIL_FOLDERS = [
-    '"[Gmail]/All Mail"',   # ← contains EVERYTHING
+    '"[Gmail]/All Mail"',
     "INBOX",
     '"[Gmail]/Sent Mail"',
     '"[Gmail]/Drafts"',
@@ -92,8 +86,7 @@ def fetch_from_folder(mail, folder, max_emails=None):
             print(f"[IMAP] No emails in {folder}")
             return []
 
-        # Newest first
-        all_ids = all_ids[::-1]
+        all_ids = all_ids[::-1]  # newest first
         ids     = all_ids if not max_emails else all_ids[:max_emails]
 
         print(f"[IMAP] {folder}: Found {len(all_ids)} emails, fetching {len(ids)}...")
@@ -136,29 +129,35 @@ def fetch_from_folder(mail, folder, max_emails=None):
     return emails
 
 
-def fetch_emails(max_emails=None, folder="ALL"):
+# ─────────────────────────────────────────────
+# ✅ FIXED: credentials passed as parameters
+#    NOT read from os.environ anymore
+# ─────────────────────────────────────────────
+
+def fetch_emails(email_address, app_password, max_emails=None, folder="ALL"):
     """
-    Fetch emails from Gmail.
-    folder="ALL"  → fetches from [Gmail]/All Mail (recommended — contains everything)
-    folder="INBOX" → inbox only
+    Fetch emails for a specific user.
+    Credentials are passed directly — not read from environment.
     """
-    if not EMAIL_ADDRESS or not EMAIL_APP_PASSWORD:
-        print("[IMAP] Missing credentials in .env file")
+    if not email_address or not app_password:
+        print("[IMAP] Missing credentials")
         return []
 
-    all_emails   = []
-    seen_ids     = set()
+    # Clean the app password (remove spaces Gmail adds for readability)
+    app_password = app_password.replace(" ", "").strip()
+
+    all_emails = []
+    seen_ids   = set()
 
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-        mail.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
+        mail.login(email_address, app_password)
+        print(f"[IMAP] Logged in as {email_address}")
 
         if folder == "ALL":
-            # Try [Gmail]/All Mail first — it has EVERYTHING
             fetched = fetch_from_folder(mail, '"[Gmail]/All Mail"', max_emails)
 
             if fetched:
-                # Deduplicate by message_id
                 for em in fetched:
                     mid = em["message_id"]
                     if mid not in seen_ids:
@@ -166,7 +165,6 @@ def fetch_emails(max_emails=None, folder="ALL"):
                         all_emails.append(em)
                 print(f"[IMAP] ✅ All Mail: {len(all_emails)} unique emails")
             else:
-                # Fallback: fetch from INBOX + Spam individually
                 print("[IMAP] All Mail unavailable — fetching individual folders...")
                 for f in ["INBOX", '"[Gmail]/Spam"']:
                     folder_emails = fetch_from_folder(mail, f, max_emails)
@@ -177,43 +175,36 @@ def fetch_emails(max_emails=None, folder="ALL"):
                             all_emails.append(em)
                 print(f"[IMAP] ✅ Total unique emails: {len(all_emails)}")
         else:
-            # Specific folder requested
             all_emails = fetch_from_folder(mail, folder, max_emails)
 
         mail.logout()
-        print(f"[IMAP] Successfully fetched {len(all_emails)} emails total")
+        print(f"[IMAP] Done. Fetched {len(all_emails)} emails for {email_address}")
         return all_emails
 
     except imaplib.IMAP4.error as e:
-        print(f"[IMAP] Login failed: {e}")
+        print(f"[IMAP] Login failed for {email_address}: {e}")
         return []
     except Exception as e:
         print(f"[IMAP] Error: {e}")
         return []
 
 
-def list_folders():
-    """Helper to list all available Gmail IMAP folders."""
+def test_connection(email_address, app_password):
+    """
+    Test IMAP connection for a specific user.
+    Returns (success: bool, message: str)
+    """
+    if not email_address or not app_password:
+        return False, "No credentials provided"
+
+    app_password = app_password.replace(" ", "").strip()
+
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-        mail.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
-        _, folders = mail.list()
-        mail.logout()
-        print("[IMAP] Available folders:")
-        for f in folders:
-            print(f"  {f.decode()}")
-    except Exception as e:
-        print(f"[IMAP] Error listing folders: {e}")
-
-
-def test_connection():
-    try:
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-        mail.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
-        # Also check how many emails exist
+        mail.login(email_address, app_password)
         mail.select('"[Gmail]/All Mail"', readonly=True)
-        _, data = mail.search(None, "ALL")
-        count = len(data[0].split())
+        _, data  = mail.search(None, "ALL")
+        count    = len(data[0].split())
         mail.logout()
         return True, f"Connection successful — {count} emails in All Mail"
     except Exception as e:
