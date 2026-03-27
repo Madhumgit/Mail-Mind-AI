@@ -27,8 +27,7 @@ def save_user_settings(email, password):
             "app_password":  password,
             "updated_at":    datetime.utcnow().isoformat()
         }
-
-        supabase.table("user_settings").upsert(data, on_conflict="user_id").execute()
+        supabase.table("user_settings").upsert(data).execute()
         return True
     except Exception as e:
         print("Save error:", e)
