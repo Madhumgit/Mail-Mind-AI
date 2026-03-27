@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 EMAIL_ADDRESS      = os.getenv("EMAIL_ADDRESS")
-EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
+EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD", "").replace(" ", "").strip()
 IMAP_SERVER        = "imap.gmail.com"
 IMAP_PORT          = 993
 

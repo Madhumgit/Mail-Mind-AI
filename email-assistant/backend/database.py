@@ -17,8 +17,8 @@ def save_user_settings(email, password, user_id="default"):
     try:
         data = {
             "user_id": user_id,
-            "email_address": email,
-            "app_password": password,
+            "email_address": email.strip(),
+            "app_password": password.replace(" ", "").strip(),  # ← add this
             "updated_at": datetime.utcnow().isoformat()
         }
 
