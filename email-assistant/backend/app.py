@@ -210,13 +210,13 @@ def save_settings():
         success = save_user_settings(email, password)
 
         if success:
-            # Clear only this user's old emails
             clear_emails(email)
             return jsonify({"success": True, "message": "Settings saved & old emails cleared!"})
 
         return jsonify({"success": False, "error": "Failed to save settings"}), 500
 
     except Exception as e:
+        print("Settings route error:", e)   # ← this will show in Render logs
         return jsonify({"success": False, "error": str(e)}), 500
 
 
