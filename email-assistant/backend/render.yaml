@@ -2,14 +2,19 @@ services:
   - type: web
     name: mailmind-api
     runtime: python
+    rootDir: email-assistant/backend
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
-      - key: FLASK_PORT
-        value: 10000
-      - key: SCHEDULER_INTERVAL_MINUTES
-        value: 30
-      - key: MAX_EMAILS_PER_FETCH
-        value: 0
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: "3.10.8"
+      - key: FLASK_PORT
+        value: "10000"
+      - key: SCHEDULER_INTERVAL_MINUTES
+        value: "30"
+      - key: MAX_EMAILS_PER_FETCH
+        value: "0"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
