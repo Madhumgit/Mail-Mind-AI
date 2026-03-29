@@ -136,8 +136,11 @@ def fetch_now():
         return jsonify({"success": False, "error": "user_id required"}), 400
 
     try:
-        count = process_emails_for_user(user_id)
-        return jsonify({"success": True, "message": f"Fetched and processed {count} new emails."})
+        import threading
+        thread = threading.Thread(target=process_emails_for_user, args=(user_id,))
+        thread.daemon = True
+        thread.start()
+        return jsonify({"success": True, "message": "Fetch started in background. Check back in 2 minutes."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
