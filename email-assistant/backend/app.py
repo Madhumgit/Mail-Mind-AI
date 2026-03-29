@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
+import threading
 
 from database        import (init_db, insert_email, get_all_emails, get_stats,
                               mark_as_read, delete_email, save_user_settings,
@@ -31,10 +32,6 @@ CORS(app, resources={r"/api/*": {
 # ─────────────────────────────────────────────
 
 def get_user_id_from_request():
-    """
-    Extract user_id (email) from request.
-    Checks: query param → JSON body → header.
-    """
     user_id = (
         request.args.get("user_id") or
         (request.get_json(silent=True) or {}).get("user_id") or
@@ -58,17 +55,21 @@ def process_emails_for_user(user_id):
         print(f"[App] No credentials for user: {user_id}")
         return 0
 
-    max_emails = int(os.getenv("MAX_EMAILS_PER_FETCH", 0)) or None
+    # Limit emails per fetch to avoid timeout — increase gradually
+    max_emails = int(os.getenv("MAX_EMAILS_PER_FETCH", 50)) or None
+    print(f"[App] Fetching up to {max_emails} emails for {user_id}...")
+
     raw_emails = fetch_emails(email_addr, app_pwd, max_emails=max_emails)
+    print(f"[App] Got {len(raw_emails)} emails from IMAP")
 
     processed = 0
     for email_data in raw_emails:
-        subject  = email_data.get("subject", "")
-        body     = email_data.get("body", "")
+        subject = email_data.get("subject", "")
+        body    = email_data.get("body", "")
 
-        category,  confidence = classify_email(subject, body)
-        priority  = detect_priority(subject, body, category)
-        summary   = summarize_email(subject, body, category)
+        category, confidence = classify_email(subject, body)
+        priority = detect_priority(subject, body, category)
+        summary  = summarize_email(subject, body, category)
 
         email_data["category"]   = category
         email_data["priority"]   = priority
@@ -84,11 +85,9 @@ def process_emails_for_user(user_id):
 
 
 def process_all_users():
-    """
-    Called by the scheduler — processes every registered user.
-    """
-    user_ids  = get_all_user_ids()
-    total     = 0
+    """Called by scheduler — processes every registered user."""
+    user_ids = get_all_user_ids()
+    total    = 0
     for uid in user_ids:
         total += process_emails_for_user(uid)
     print(f"[Scheduler] Done. {total} new emails across {len(user_ids)} users.")
@@ -105,13 +104,18 @@ start_scheduler(interval_minutes=int(os.getenv("SCHEDULER_INTERVAL_MINUTES", 30)
 # Health
 # ─────────────────────────────────────────────
 
+@app.route("/", methods=["GET", "HEAD"])
+def root():
+    return jsonify({"status": "ok"}), 200
+
+
 @app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "message": "Email Assistant API running"})
 
 
 # ─────────────────────────────────────────────
-# Email Routes  (all require ?user_id=email)
+# Email Routes
 # ─────────────────────────────────────────────
 
 @app.route("/api/emails", methods=["GET"])
@@ -131,16 +135,25 @@ def get_emails():
 
 @app.route("/api/emails/fetch", methods=["POST"])
 def fetch_now():
+    """
+    Runs email fetch in a background thread so the HTTP request
+    returns immediately — no more Gunicorn worker timeout.
+    """
     user_id = get_user_id_from_request()
     if not user_id:
         return jsonify({"success": False, "error": "user_id required"}), 400
 
     try:
-        import threading
-        thread = threading.Thread(target=process_emails_for_user, args=(user_id,))
-        thread.daemon = True
+        thread = threading.Thread(
+            target=process_emails_for_user,
+            args=(user_id,),
+            daemon=True
+        )
         thread.start()
-        return jsonify({"success": True, "message": "Fetch started in background. Check back in 2 minutes."})
+        return jsonify({
+            "success": True,
+            "message": "Fetching emails in background. Refresh in 1-2 minutes to see them."
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -195,7 +208,6 @@ def get_settings():
     user_id = get_user_id_from_request()
     if not user_id:
         return jsonify({"email": "", "configured": False})
-
     settings = get_user_settings(user_id)
     return jsonify(settings)
 
@@ -205,6 +217,8 @@ def save_settings():
     data     = request.get_json(force=True, silent=True) or {}
     email    = data.get("email", "").strip().lower()
     password = data.get("app_password", "").strip()
+
+    print(f"[Settings] Saving for: {email}")
 
     if not email or not password:
         return jsonify({"success": False, "error": "Email and password are required"}), 400
@@ -219,12 +233,12 @@ def save_settings():
         return jsonify({"success": False, "error": "Failed to save settings"}), 500
 
     except Exception as e:
-        print("Settings route error:", e)   # ← this will show in Render logs
+        print(f"[Settings] ERROR: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ─────────────────────────────────────────────
-# Current user (used by frontend on load)
+# Current user
 # ─────────────────────────────────────────────
 
 @app.route("/api/current-email", methods=["GET"])
@@ -271,7 +285,7 @@ def ai_status():
         import torch
         return jsonify({
             "classifier":   "DistilBERT" if USE_BERT else "TF-IDF",
-            "summarizer":   "DistilBART (loads on first use)",
+            "summarizer":   "Fast Extractive (no AI model)",
             "smart_reply":  "Template + Context-aware",
             "device":       "GPU (CUDA)" if torch.cuda.is_available() else "CPU",
             "bert_trained": USE_BERT,
