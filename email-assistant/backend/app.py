@@ -21,10 +21,13 @@ load_dotenv()
 app = Flask(__name__)
 
 CORS(app, resources={r"/api/*": {
-    "origins": ["https://mailmind-agent.vercel.app"],
+    "origins": [
+        "https://mailmind-agent.vercel.app",
+        "http://mailmind-agent.vercel.app",  # http version
+    ],
     "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    "allow_headers": ["Content-Type", "Authorization"],
-    "supports_credentials": True
+    "allow_headers": ["Content-Type", "Authorization", "X-User-Id"],
+    "supports_credentials": False  # ← change to False
 }})
 
 BATCH_SIZE = 50  # fetch 50 emails per IMAP call — safe for memory
