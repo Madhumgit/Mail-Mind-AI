@@ -3,12 +3,13 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import threading
+import time
 
 from database        import (init_db, insert_email, get_all_emails, get_stats,
                               mark_as_read, delete_email, save_user_settings,
                               get_user_settings, get_user_credentials, get_all_user_ids,
                               clear_emails)
-from gmail_service   import fetch_emails, test_connection
+from gmail_service   import fetch_emails, test_connection, get_total_email_count
 from classifier      import classify_email, train_model, train_bert
 from priority_detector import detect_priority
 from summarizer      import summarize_email
@@ -26,6 +27,8 @@ CORS(app, resources={r"/api/*": {
     "supports_credentials": True
 }})
 
+BATCH_SIZE = 50  # fetch 50 emails per IMAP call — safe for memory
+
 
 # ─────────────────────────────────────────────
 # Helpers
@@ -41,13 +44,44 @@ def get_user_id_from_request():
 
 
 # ─────────────────────────────────────────────
-# Email Processing Pipeline
+# Process a single batch of emails
+# ─────────────────────────────────────────────
+
+def _process_batch(raw_emails, user_id):
+    """Classify + store a list of raw email dicts. Returns count stored."""
+    processed = 0
+    for email_data in raw_emails:
+        try:
+            subject  = email_data.get("subject", "")
+            body     = email_data.get("body", "")
+
+            category, confidence = classify_email(subject, body)
+            priority = detect_priority(subject, body, category)
+            summary  = summarize_email(subject, body, category)
+
+            email_data["category"]   = category
+            email_data["priority"]   = priority
+            email_data["summary"]    = summary
+            email_data["confidence"] = confidence
+
+            result = insert_email(email_data, user_id=user_id)
+            if result:
+                processed += 1
+        except Exception as e:
+            print(f"[App] Error processing email: {e}")
+            continue
+    return processed
+
+
+# ─────────────────────────────────────────────
+# Email Processing Pipeline — batched
 # ─────────────────────────────────────────────
 
 def process_emails_for_user(user_id):
     """
-    Fetch + classify + store emails for ONE specific user.
-    Returns count of newly stored emails.
+    Fetch ALL emails in batches of BATCH_SIZE.
+    Each batch: fetch from IMAP → classify → store → move to next batch.
+    This avoids loading all emails into memory at once.
     """
     email_addr, app_pwd = get_user_credentials(user_id)
 
@@ -55,49 +89,71 @@ def process_emails_for_user(user_id):
         print(f"[App] No credentials for user: {user_id}")
         return 0
 
-    # Limit emails per fetch to avoid timeout — increase gradually
-    max_emails = int(os.getenv("MAX_EMAILS_PER_FETCH", 50)) or None
-    print(f"[App] Fetching up to {max_emails} emails for {user_id}...")
+    # Get total count first
+    total_on_gmail = get_total_email_count(email_addr, app_pwd)
+    print(f"[App] Gmail has {total_on_gmail} emails for {user_id}")
 
-    raw_emails = fetch_emails(email_addr, app_pwd, max_emails=max_emails)
-    print(f"[App] Got {len(raw_emails)} emails from IMAP")
+    total_stored = 0
+    offset       = 0
 
-    processed = 0
-    for email_data in raw_emails:
-        subject = email_data.get("subject", "")
-        body    = email_data.get("body", "")
+    while offset < total_on_gmail:
+        print(f"[App] Fetching batch: offset={offset} size={BATCH_SIZE}...")
 
-        category, confidence = classify_email(subject, body)
-        priority = detect_priority(subject, body, category)
-        summary  = summarize_email(subject, body, category)
+        try:
+            raw_emails = fetch_emails(
+                email_addr, app_pwd,
+                max_emails=BATCH_SIZE,
+                offset=offset
+            )
+        except Exception as e:
+            print(f"[App] IMAP fetch error at offset {offset}: {e}")
+            break
 
-        email_data["category"]   = category
-        email_data["priority"]   = priority
-        email_data["summary"]    = summary
-        email_data["confidence"] = confidence
+        if not raw_emails:
+            print(f"[App] No emails returned at offset={offset} — done.")
+            break
 
-        result = insert_email(email_data, user_id=user_id)
-        if result:
-            processed += 1
+        stored = _process_batch(raw_emails, user_id)
+        total_stored += stored
+        offset       += len(raw_emails)
 
-    print(f"[App] User {user_id}: stored {processed} new emails.")
-    return processed
+        print(f"[App] Batch done. Stored {stored} new. Total stored: {total_stored}. Offset now: {offset}")
+
+        # Small pause between batches to avoid memory spike
+        time.sleep(1)
+
+        # If batch returned fewer than BATCH_SIZE, we've reached the end
+        if len(raw_emails) < BATCH_SIZE:
+            print(f"[App] Last batch reached — all emails processed.")
+            break
+
+    print(f"[App] ✅ User {user_id}: finished. Total new emails stored: {total_stored}")
+    return total_stored
 
 
 def process_all_users():
-    """Called by scheduler — processes every registered user."""
-    user_ids = get_all_user_ids()
-    total    = 0
-    for uid in user_ids:
-        total += process_emails_for_user(uid)
-    print(f"[Scheduler] Done. {total} new emails across {len(user_ids)} users.")
-    return total
+    """Called by scheduler — processes every registered user in background."""
+    def _run():
+        user_ids = get_all_user_ids()
+        print(f"[Scheduler] Processing {len(user_ids)} users...")
+        total = 0
+        for uid in user_ids:
+            total += process_emails_for_user(uid)
+        print(f"[Scheduler] ✅ Done. {total} new emails across {len(user_ids)} users.")
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
 
 
-# ── Startup ───────────────────────────────────────────────────────────────────
+# ── Startup — delay scheduler by 60s so server boots cleanly ─────────────────
+def _delayed_start():
+    time.sleep(60)
+    set_processor(process_all_users)
+    start_scheduler(interval_minutes=int(os.getenv("SCHEDULER_INTERVAL_MINUTES", 60)))
+    print("[Scheduler] Started with 60s boot delay.")
+
 init_db()
-set_processor(process_all_users)
-start_scheduler(interval_minutes=int(os.getenv("SCHEDULER_INTERVAL_MINUTES", 30)))
+threading.Thread(target=_delayed_start, daemon=True).start()
 
 
 # ─────────────────────────────────────────────
@@ -126,7 +182,7 @@ def get_emails():
 
     category = request.args.get("category", "All")
     priority = request.args.get("priority", "All")
-    limit    = int(request.args.get("limit", 100))
+    limit    = int(request.args.get("limit", 500))
 
     emails = get_all_emails(category=category, priority=priority,
                             limit=limit, user_id=user_id)
@@ -136,8 +192,8 @@ def get_emails():
 @app.route("/api/emails/fetch", methods=["POST"])
 def fetch_now():
     """
-    Runs email fetch in a background thread so the HTTP request
-    returns immediately — no more Gunicorn worker timeout.
+    Runs full batched fetch in background thread.
+    Returns immediately — frontend should poll after ~2 mins.
     """
     user_id = get_user_id_from_request()
     if not user_id:
@@ -152,7 +208,7 @@ def fetch_now():
         thread.start()
         return jsonify({
             "success": True,
-            "message": "Fetching emails in background. Refresh in 1-2 minutes to see them."
+            "message": "Fetching all emails in background batches. Refresh in 2-3 minutes to see all emails."
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -225,13 +281,10 @@ def save_settings():
 
     try:
         success = save_user_settings(email, password)
-
         if success:
             clear_emails(email)
             return jsonify({"success": True, "message": "Settings saved & old emails cleared!"})
-
         return jsonify({"success": False, "error": "Failed to save settings"}), 500
-
     except Exception as e:
         print(f"[Settings] ERROR: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -244,10 +297,7 @@ def save_settings():
 @app.route("/api/current-email", methods=["GET"])
 def current_email():
     user_id = get_user_id_from_request()
-    return jsonify({
-        "email":     user_id or "",
-        "connected": bool(user_id)
-    })
+    return jsonify({"email": user_id or "", "connected": bool(user_id)})
 
 
 # ─────────────────────────────────────────────
@@ -285,7 +335,7 @@ def ai_status():
         import torch
         return jsonify({
             "classifier":   "DistilBERT" if USE_BERT else "TF-IDF",
-            "summarizer":   "Fast Extractive (no AI model)",
+            "summarizer":   "Fast Extractive",
             "smart_reply":  "Template + Context-aware",
             "device":       "GPU (CUDA)" if torch.cuda.is_available() else "CPU",
             "bert_trained": USE_BERT,
@@ -335,13 +385,13 @@ def smart_replies_direct():
 @app.route("/api/debug/counts", methods=["GET"])
 def debug_counts():
     try:
-        import imaplib
         user_id             = get_user_id_from_request()
         email_addr, app_pwd = get_user_credentials(user_id)
 
         if not email_addr:
             return jsonify({"error": "No credentials for this user"}), 400
 
+        import imaplib
         mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
         mail.login(email_addr, app_pwd.replace(" ", "").strip())
 
