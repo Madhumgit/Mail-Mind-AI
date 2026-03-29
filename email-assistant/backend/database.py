@@ -124,10 +124,6 @@ def get_all_user_ids():
 # ───────────────── EMAILS ─────────────────
 
 def insert_email(email_data, user_id):
-    """
-    Insert a single email scoped to user_id (email_address).
-    Skips if message_id already exists for this user.
-    """
     try:
         existing = supabase.table("emails") \
             .select("id") \
@@ -136,7 +132,7 @@ def insert_email(email_data, user_id):
             .execute()
 
         if existing.data:
-            return None  # already exists — skip
+            return None
 
         data = {
             "message_id": email_data.get("message_id"),
@@ -151,11 +147,12 @@ def insert_email(email_data, user_id):
             "user_id":    user_id
         }
 
-        return supabase.table("emails").insert(data).execute().data
+        result = supabase.table("emails").insert(data).execute()
+        print(f"[DB] Insert result: {result.data}")  # ← ADD THIS
+        return result.data
     except Exception as e:
-        print("Insert error:", e)
+        print(f"[DB] Insert error: {e}")  # ← ADD THIS
         return None
-
 
 def get_all_emails(category=None, priority=None, limit=100, user_id=None):
     try:
