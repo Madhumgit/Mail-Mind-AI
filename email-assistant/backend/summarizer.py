@@ -25,65 +25,6 @@ IMPORTANT_PATTERNS = [
     r"(selected|shortlisted|hired|congratulations).{0,60}",
 ]
 
-# ── DistilBART (lazy loaded) ───────────────────────────────────────────────────
-_bart_pipeline = None
-_bart_loaded   = False
-
-
-def _load_bart():
-    """Load DistilBART-CNN once. Falls back silently if not available."""
-    global _bart_pipeline, _bart_loaded
-    if _bart_loaded:
-        return _bart_pipeline is not None
-    _bart_loaded = True
-    try:
-        from transformers import pipeline
-        print("[Summarizer] Loading DistilBART model (first time only)...")
-        _bart_pipeline = pipeline(
-            "summarization",
-            model="sshleifer/distilbart-cnn-6-6",
-            device=-1,   # CPU
-        )
-        print("[Summarizer] ✅ DistilBART loaded!")
-        return True
-    except ImportError:
-        print("[Summarizer] transformers not installed — using extractive fallback")
-        return False
-    except Exception as e:
-        print(f"[Summarizer] Could not load DistilBART: {e} — using extractive fallback")
-        return False
-
-
-def _bart_summarize(subject: str, body: str):
-    """Run DistilBART inference. Returns summary string or None on failure."""
-    try:
-        input_text = f"{subject}. {_clean_for_bart(body)}"[:1024]
-        if len(input_text) < 80:
-            return None
-        result  = _bart_pipeline(
-            input_text,
-            max_length=60,
-            min_length=20,
-            do_sample=False,
-            truncation=True,
-        )
-        summary = result[0]["summary_text"].strip()
-        return summary if len(summary) > 15 else None
-    except Exception as e:
-        print(f"[Summarizer] DistilBART inference error: {e}")
-        return None
-
-
-def _clean_for_bart(text: str) -> str:
-    """Clean body text before sending to DistilBART."""
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"http\S+|www\S+", "", text)
-    text = re.sub(r"(From|To|Cc|Subject|Date):.*\n", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:1500]
-
-
-# ── Original helper functions (100% unchanged) ────────────────────────────────
 
 def clean_text(text):
     text = re.sub(r"http\S+|www\S+", "", text)
@@ -117,13 +58,18 @@ def extract_key_sentences(text, max_sentences=2):
     return " ".join(top)
 
 
-def _extractive_summarize(subject, body, category):
-    """Your original summarization logic — used as fallback."""
-    if not body or len(body.strip()) < 30:
-        return subject if subject else "No content available."
-
+def summarize_email(subject, body, category="Other"):
+    """
+    Fast extractive summarizer — no heavy AI models.
+    Processes each email in milliseconds.
+    """
+    # Spam — instant return
     if category == "Spam":
         return "Promotional or spam message. No action required."
+
+    # Too short
+    if not body or len(body.strip()) < 30:
+        return subject if subject else "No content available."
 
     combined = f"{subject} {body}".lower()
     for pattern in IMPORTANT_PATTERNS:
@@ -139,32 +85,3 @@ def _extractive_summarize(subject, body, category):
     template = CATEGORY_TEMPLATES.get(category, "{key_info}")
     summary  = template.format(key_info=key_info)
     return summary[:200]
-
-
-# ── Main function (drop-in replacement — same name & signature) ───────────────
-
-def summarize_email(subject, body, category="Other"):
-    """
-    Upgraded summarizer — tries DistilBART AI first, falls back to
-    your original extractive logic automatically.
-
-    Same function name + signature as before — no changes needed in app.py!
-    """
-    # Spam — instant return, no AI needed
-    if category == "Spam":
-        return "Promotional or spam message. No action required."
-
-    # Too short — nothing to summarize
-    if not body or len(body.strip()) < 50:
-        return subject if subject else "No content available."
-
-    # ── 1. Try DistilBART AI ───────────────────────────────────────────────────
-    if _load_bart() and _bart_pipeline is not None:
-        ai_summary = _bart_summarize(subject, body)
-        if ai_summary:
-            print(f"[Summarizer] DistilBART → {ai_summary[:60]}...")
-            return ai_summary
-
-    # ── 2. Your original extractive logic as fallback ──────────────────────────
-    print("[Summarizer] Using extractive fallback")
-    return _extractive_summarize(subject, body, category)
