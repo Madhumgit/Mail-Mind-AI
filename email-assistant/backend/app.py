@@ -298,6 +298,7 @@ def save_settings():
 # ─────────────────────────────────────────────
 
 @app.route("/api/current-email", methods=["GET"])
+
 def current_email():
     user_id = get_user_id_from_request()
     return jsonify({"email": user_id or "", "connected": bool(user_id)})
@@ -307,7 +308,8 @@ def current_email():
 # Training
 # ─────────────────────────────────────────────
 
-@app.route("/api/train", methods=["POST"])
+@app.route("/api/train", methods=["GET", "POST"])
+
 def retrain():
     try:
         train_model()
