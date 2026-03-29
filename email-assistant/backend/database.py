@@ -12,22 +12,46 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # ───────────────── USER SETTINGS ─────────────────
+# NOTE: Your Supabase user_settings table columns are:
+#   id (int8), email_address (text), app_password (text),
+#   created_at (timestamp), updated_at (timestamp)
+# We use email_address as the unique identifier (user_id = email_address)
 
 def save_user_settings(email, password):
     """
-    Save credentials scoped by email address (email IS the user_id).
+    Save or update credentials using email_address as the unique key.
+    Checks if email exists → update, else → insert.
     """
     try:
         email    = email.strip().lower()
         password = password.replace(" ", "").strip()
 
-        data = {
-            "user_id":       email,
-            "email_address": email,
-            "app_password":  password,
-            "updated_at":    datetime.utcnow().isoformat()
-        }
-        supabase.table("user_settings").upsert(data).execute()
+        # Check if this email already exists
+        existing = supabase.table("user_settings") \
+            .select("id") \
+            .eq("email_address", email) \
+            .execute()
+
+        if existing.data:
+            # Update existing row
+            supabase.table("user_settings") \
+                .update({
+                    "app_password": password,
+                    "updated_at":   datetime.utcnow().isoformat()
+                }) \
+                .eq("email_address", email) \
+                .execute()
+        else:
+            # Insert new row
+            supabase.table("user_settings") \
+                .insert({
+                    "email_address": email,
+                    "app_password":  password,
+                    "updated_at":    datetime.utcnow().isoformat()
+                }) \
+                .execute()
+
+        print(f"[DB] Saved settings for {email}")
         return True
     except Exception as e:
         print("Save error:", e)
@@ -35,12 +59,15 @@ def save_user_settings(email, password):
 
 
 def get_user_settings(user_id):
-    """Return settings for a specific user."""
+    """Return settings for a specific user (user_id = email_address)."""
     try:
         if not user_id:
             return {"email": "", "configured": False}
 
-        res = supabase.table("user_settings").select("*").eq("user_id", user_id).execute()
+        res = supabase.table("user_settings") \
+            .select("*") \
+            .eq("email_address", user_id) \
+            .execute()
 
         if res.data:
             row = res.data[0]
@@ -58,13 +85,16 @@ def get_user_settings(user_id):
 def get_user_credentials(user_id):
     """
     Return (email, app_password) for a specific user.
-    user_id is required — no 'default' fallback.
+    user_id = email_address.
     """
     try:
         if not user_id:
             return "", ""
 
-        res = supabase.table("user_settings").select("*").eq("user_id", user_id).execute()
+        res = supabase.table("user_settings") \
+            .select("email_address, app_password") \
+            .eq("email_address", user_id) \
+            .execute()
 
         if res.data:
             row = res.data[0]
@@ -78,12 +108,14 @@ def get_user_credentials(user_id):
 
 def get_all_user_ids():
     """
-    Return all registered user_ids.
+    Return all registered email addresses.
     Used by the scheduler to process every user's inbox.
     """
     try:
-        res = supabase.table("user_settings").select("user_id").execute()
-        return [row["user_id"] for row in res.data] if res.data else []
+        res = supabase.table("user_settings") \
+            .select("email_address") \
+            .execute()
+        return [row["email_address"] for row in res.data] if res.data else []
     except Exception as e:
         print("Get all users error:", e)
         return []
@@ -93,8 +125,8 @@ def get_all_user_ids():
 
 def insert_email(email_data, user_id):
     """
-    Insert a single email scoped to user_id.
-    Skips if message_id already exists for this user (deduplication).
+    Insert a single email scoped to user_id (email_address).
+    Skips if message_id already exists for this user.
     """
     try:
         existing = supabase.table("emails") \
@@ -149,7 +181,8 @@ def get_stats(user_id=None):
         if not user_id:
             return {"total": 0, "categories": {}, "priorities": {}}
 
-        emails = supabase.table("emails").select("category, priority") \
+        emails = supabase.table("emails") \
+            .select("category, priority") \
             .eq("user_id", user_id).execute().data or []
 
         total      = len(emails)
