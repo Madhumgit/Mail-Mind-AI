@@ -7,7 +7,6 @@ import {
   Copy, Check, Zap, ChevronDown, Menu
 } from "lucide-react";
 
-// ── API ────────────────────────────────────────────────────────────────────────
 const isCapacitor = typeof window !== "undefined" && window.Capacitor !== undefined;
 const isLocalDev  = !isCapacitor && (
   window.location.hostname === "localhost" ||
@@ -19,7 +18,6 @@ const API = isLocalDev
 
 const USER_ID_KEY = "mailmind_user_id";
 
-// ── Category config ────────────────────────────────────────────────────────────
 const CATS = {
   All:        { icon: Inbox,         color: "#6366f1", bg: "#eef2ff", label: "All"         },
   Job:        { icon: Briefcase,     color: "#0ea5e9", bg: "#f0f9ff", label: "Jobs"         },
@@ -47,26 +45,26 @@ function useIsMobile() {
 export default function App() {
   const isMobile = useIsMobile();
 
-  const [userId,        setUserId]        = useState(() => localStorage.getItem(USER_ID_KEY) || "");
-  const [emails,        setEmails]        = useState([]);
-  const [stats,         setStats]         = useState({});
-  const [activeTab,     setActiveTab]     = useState("All");
-  const [selectedEmail, setSelectedEmail] = useState(null);
-  const [loading,       setLoading]       = useState(false);
-  const [fetching,      setFetching]      = useState(false);
-  const [connected,     setConnected]     = useState(null);
-  const [searchQuery,   setSearchQuery]   = useState("");
-  const [toast,         setToast]         = useState(null);
-  const [showSidebar,   setShowSidebar]   = useState(false);
-  const [showSettings,  setShowSettings]  = useState(false);
+  const [userId,           setUserId]           = useState(() => localStorage.getItem(USER_ID_KEY) || "");
+  const [emails,           setEmails]           = useState([]);
+  const [stats,            setStats]            = useState({});
+  const [activeTab,        setActiveTab]        = useState("All");
+  const [selectedEmail,    setSelectedEmail]    = useState(null);
+  const [loading,          setLoading]          = useState(false);
+  const [fetching,         setFetching]         = useState(false);
+  const [connected,        setConnected]        = useState(null);
+  const [searchQuery,      setSearchQuery]      = useState("");
+  const [toast,            setToast]            = useState(null);
+  const [showSidebar,      setShowSidebar]      = useState(false);
+  const [showSettings,     setShowSettings]     = useState(false);
   const [settingsEmail,    setSettingsEmail]    = useState("");
   const [settingsPassword, setSettingsPassword] = useState("");
   const [settingsMsg,      setSettingsMsg]      = useState("");
   const [savingSettings,   setSavingSettings]   = useState(false);
   const [showPassword,     setShowPassword]     = useState(false);
-  const [smartReplies,   setSmartReplies]   = useState({});
-  const [loadingReplies, setLoadingReplies] = useState({});
-  const [copiedReply,    setCopiedReply]    = useState(null);
+  const [smartReplies,     setSmartReplies]     = useState({});
+  const [loadingReplies,   setLoadingReplies]   = useState({});
+  const [copiedReply,      setCopiedReply]      = useState(null);
 
   const showToast = (msg, type = "info") => {
     setToast({ msg, type });
@@ -84,7 +82,8 @@ export default function App() {
     if (!userId) return;
     setLoading(true);
     try {
-      const params = withUser();
+      // ✅ FIX: limit increased to 500
+      const params = withUser({ limit: 500 });
       if (activeTab !== "All") params.category = activeTab;
       const { data } = await axios.get(`${API}/emails`, { params });
       setEmails(data.emails || []);
@@ -132,8 +131,11 @@ export default function App() {
     try {
       const { data } = await axios.post(`${API}/emails/fetch`, { user_id: userId });
       showToast(data.message, "success");
-      await loadEmails();
-      await loadStats();
+      // ✅ Auto-reload emails after 60s (background fetch takes time)
+      setTimeout(async () => {
+        await loadEmails();
+        await loadStats();
+      }, 60000);
     } catch {
       showToast("Fetch failed", "error");
     }
@@ -235,7 +237,6 @@ export default function App() {
                  padding:28, boxShadow:"0 24px 64px rgba(0,0,0,0.2)" }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10, fontSize:17, fontWeight:700, color:"#1e293b" }}>
             <div style={{ width:34, height:34, background:"#eef2ff", borderRadius:9, display:"grid", placeItems:"center" }}>
@@ -251,7 +252,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Instructions */}
         <div style={{ background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:10,
                       padding:"14px 16px", marginBottom:18 }}>
           <div style={{ fontSize:12, color:"#6366f1", fontWeight:700, marginBottom:8 }}>
@@ -274,55 +274,37 @@ export default function App() {
         </div>
 
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-
-          {/* Email field */}
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <label
-              htmlFor="settings-email"
-              style={{ fontSize:12, color:"#475569", fontWeight:600 }}
-            >
+            <label htmlFor="settings-email" style={{ fontSize:12, color:"#475569", fontWeight:600 }}>
               Gmail Address
             </label>
             <input
-              id="settings-email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              value={settingsEmail}
-              onChange={e => setSettingsEmail(e.target.value)}
+              id="settings-email" name="email" type="email" autoComplete="email"
+              value={settingsEmail} onChange={e => setSettingsEmail(e.target.value)}
               placeholder="you@gmail.com"
               style={{ background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:9,
                        padding:"11px 14px", color:"#1e293b", fontSize:14, outline:"none", width:"100%" }}
             />
           </div>
 
-          {/* Password field */}
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <label
-              htmlFor="settings-password"
-              style={{ fontSize:12, color:"#475569", fontWeight:600 }}
-            >
+            <label htmlFor="settings-password" style={{ fontSize:12, color:"#475569", fontWeight:600 }}>
               App Password
             </label>
             <div style={{ position:"relative" }}>
               <input
-                id="settings-password"
-                name="app_password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                value={settingsPassword}
-                onChange={e => setSettingsPassword(e.target.value)}
+                id="settings-password" name="app_password"
+                type={showPassword ? "text" : "password"} autoComplete="current-password"
+                value={settingsPassword} onChange={e => setSettingsPassword(e.target.value)}
                 placeholder="xxxx xxxx xxxx xxxx"
                 style={{ background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:9,
                          padding:"11px 14px", paddingRight:60, color:"#1e293b",
                          fontSize:14, outline:"none", width:"100%" }}
               />
-              <button
-                onClick={() => setShowPassword(!showPassword)}
+              <button onClick={() => setShowPassword(!showPassword)}
                 style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
                          background:"transparent", border:"none", color:"#6366f1",
-                         fontSize:12, fontWeight:600, cursor:"pointer" }}
-              >
+                         fontSize:12, fontWeight:600, cursor:"pointer" }}>
                 {showPassword ? "Hide" : "Show"}
               </button>
             </div>
@@ -337,13 +319,10 @@ export default function App() {
             </div>
           )}
 
-          <button
-            onClick={handleSaveSettings}
-            disabled={savingSettings}
+          <button onClick={handleSaveSettings} disabled={savingSettings}
             style={{ padding:"12px 0", background:"linear-gradient(135deg,#6366f1,#8b5cf6)",
                      border:"none", borderRadius:9, color:"#fff", fontSize:14, fontWeight:700,
-                     width:"100%", cursor:"pointer", opacity: savingSettings ? 0.7 : 1 }}
-          >
+                     width:"100%", cursor:"pointer", opacity: savingSettings ? 0.7 : 1 }}>
             {savingSettings ? "Saving..." : "Save & Connect"}
           </button>
         </div>
@@ -378,12 +357,9 @@ export default function App() {
                     marginBottom:20,
                     background: connected ? "#dcfce7" : connected === false ? "#fee2e2" : "#f1f5f9",
                     border: `1px solid ${connected ? "#86efac" : connected === false ? "#fca5a5" : "#e2e8f0"}` }}>
-        {connected === null
-          ? <Clock size={13} color="#94a3b8"/>
-          : connected
-            ? <Wifi size={13} color="#16a34a"/>
-            : <WifiOff size={13} color="#dc2626"/>
-        }
+        {connected === null ? <Clock size={13} color="#94a3b8"/>
+          : connected ? <Wifi size={13} color="#16a34a"/>
+          : <WifiOff size={13} color="#dc2626"/>}
         <span style={{ fontSize:12, flex:1, fontWeight:500,
                        color: connected ? "#16a34a" : connected === false ? "#dc2626" : "#64748b" }}>
           {connected === null ? "Checking..." : connected ? "Gmail Connected" : "Not Connected"}
@@ -405,8 +381,7 @@ export default function App() {
           const active = activeTab === cat;
           const Icon   = cfg.icon;
           return (
-            <button key={cat}
-              onClick={() => { setActiveTab(cat); setShowSidebar(false); }}
+            <button key={cat} onClick={() => { setActiveTab(cat); setShowSidebar(false); }}
               style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px",
                        border:"none", borderRadius:10, fontSize:14, width:"100%", textAlign:"left",
                        cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s",
@@ -437,7 +412,7 @@ export default function App() {
     </>
   );
 
-  // ── SMART REPLIES PANEL ───────────────────────────────────────────────────────
+  // ── SMART REPLIES ─────────────────────────────────────────────────────────────
   const SmartRepliesPanel = ({ em }) => {
     const replies  = smartReplies[em.id] || [];
     const loadingR = loadingReplies[em.id];
@@ -700,7 +675,7 @@ export default function App() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
       * { box-sizing:border-box; margin:0; padding:0; }
-      html,body,#root { height:100%; }
+      html,body,#root { height:100%; overflow:hidden; }
       body { font-family:'Inter',sans-serif; background:#f1f5f9; }
       ::-webkit-scrollbar { width:5px; }
       ::-webkit-scrollbar-track { background:#f1f5f9; }
@@ -726,7 +701,7 @@ export default function App() {
   if (isMobile) {
     return (
       <div style={{ display:"flex", flexDirection:"column", height:"100vh",
-                    background:"#f1f5f9", fontFamily:"'Inter',sans-serif" }}>
+                    background:"#f1f5f9", fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
         <GlobalStyles/>
         <Toast/>
         {showSettings && <SettingsModal/>}
@@ -799,16 +774,11 @@ export default function App() {
           <div style={{ display:"flex", alignItems:"center", gap:8, background:"#f8fafc",
                         border:"1px solid #e2e8f0", borderRadius:10, padding:"9px 12px" }}>
             <Search size={15} color="#94a3b8"/>
-            <input
-              id="mobile-search"
-              name="search"
-              value={searchQuery}
+            <input id="mobile-search" name="search" value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search emails..."
-              autoComplete="off"
+              placeholder="Search emails..." autoComplete="off"
               style={{ background:"transparent", border:"none", color:"#1e293b",
-                       fontSize:14, outline:"none", flex:1 }}
-            />
+                       fontSize:14, outline:"none", flex:1 }}/>
             {searchQuery && (
               <button onClick={() => setSearchQuery("")}
                 style={{ background:"none", border:"none", cursor:"pointer", display:"flex" }}>
@@ -832,7 +802,8 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ flex:1, overflowY:"auto", padding:"12px 16px" }}>
+        {/* ✅ FIX: minHeight:0 enables proper flex scrolling on mobile */}
+        <div style={{ flex:1, overflowY:"auto", padding:"12px 16px", minHeight:0 }}>
           {loading ? (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"60px 0" }}>
               <RefreshCw size={28} color="#cbd5e1" style={{ animation:"spin 1s linear infinite" }}/>
@@ -869,11 +840,12 @@ export default function App() {
         <SidebarContent/>
       </aside>
 
-      <main style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"auto",
-                     padding:"28px 36px", gap:20, minWidth:0 }}>
+      {/* ✅ FIX: main no longer overflowY auto — inner table scrolls instead */}
+      <main style={{ flex:1, display:"flex", flexDirection:"column",
+                     padding:"28px 36px", gap:20, minWidth:0, minHeight:0, overflow:"hidden" }}>
 
         {/* Top bar */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
           <div>
             <h1 style={{ fontSize:28, fontWeight:800, color:"#1e293b", letterSpacing:"-0.5px" }}>
               {CATS[activeTab]?.label || "All Emails"}
@@ -891,16 +863,11 @@ export default function App() {
                           border:"1px solid #e2e8f0", borderRadius:10, padding:"10px 16px",
                           minWidth:260, boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
               <Search size={16} color="#94a3b8"/>
-              <input
-                id="desktop-search"
-                name="search"
-                value={searchQuery}
+              <input id="desktop-search" name="search" value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search emails..."
-                autoComplete="off"
+                placeholder="Search emails..." autoComplete="off"
                 style={{ background:"transparent", border:"none", color:"#1e293b",
-                         fontSize:14, outline:"none", flex:1 }}
-              />
+                         fontSize:14, outline:"none", flex:1 }}/>
               {searchQuery && (
                 <button onClick={() => setSearchQuery("")}
                   style={{ background:"none", border:"none", cursor:"pointer", display:"flex" }}>
@@ -912,7 +879,7 @@ export default function App() {
               style={{ width:42, height:42, background:"#fff", border:"1px solid #e2e8f0",
                        borderRadius:10, display:"grid", placeItems:"center", cursor:"pointer",
                        boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
-              <Settings size={17} color="#64748b"/>
+              <Settings size={17} color="#64Tableb"/>
             </button>
             <button onClick={fetchNow} disabled={fetching}
               style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 22px",
@@ -928,7 +895,7 @@ export default function App() {
 
         {connected === false && (
           <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 18px",
-                        background:"#fffbeb", border:"1px solid #fde68a",
+                        background:"#fffbeb", border:"1px solid #fde68a", flexShrink:0,
                         borderRadius:12, fontSize:14, color:"#92400e" }}>
             <AlertCircle size={16} color="#d97706"/>
             <span style={{ flex:1 }}>Gmail not connected. Configure credentials to start syncing.</span>
@@ -940,14 +907,17 @@ export default function App() {
           </div>
         )}
 
-        {/* Email table */}
+        {/* ✅ FIX: email table scrolls independently — flex:1 + minHeight:0 + overflowY:auto */}
         <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14,
-                      overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.04)", flex:1 }}>
+                      overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.04)",
+                      flex:1, minHeight:0, display:"flex", flexDirection:"column" }}>
+
+          {/* Sticky table header */}
           {filtered.length > 0 && (
             <div style={{ display:"flex", alignItems:"center", padding:"12px 24px",
                           background:"#f8fafc", borderBottom:"2px solid #e2e8f0",
                           fontSize:11, color:"#94a3b8", fontWeight:700,
-                          textTransform:"uppercase", letterSpacing:"0.6px", gap:8 }}>
+                          textTransform:"uppercase", letterSpacing:"0.6px", gap:8, flexShrink:0 }}>
               <span style={{ width:10 }}/>
               <span style={{ flex:4 }}>Subject</span>
               <span style={{ flex:2 }}>From</span>
@@ -959,25 +929,28 @@ export default function App() {
             </div>
           )}
 
-          {loading ? (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"80px 0" }}>
-              <RefreshCw size={30} color="#cbd5e1" style={{ animation:"spin 1s linear infinite" }}/>
-              <p style={{ marginTop:14, color:"#94a3b8", fontSize:15 }}>Loading emails...</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"80px 0" }}>
-              <div style={{ width:68, height:68, background:"#f1f5f9", borderRadius:"50%",
-                            display:"grid", placeItems:"center" }}>
-                <Inbox size={30} color="#94a3b8"/>
+          {/* ✅ Scrollable email list */}
+          <div style={{ flex:1, overflowY:"auto", minHeight:0 }}>
+            {loading ? (
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"80px 0" }}>
+                <RefreshCw size={30} color="#cbd5e1" style={{ animation:"spin 1s linear infinite" }}/>
+                <p style={{ marginTop:14, color:"#94a3b8", fontSize:15 }}>Loading emails...</p>
               </div>
-              <p style={{ color:"#1e293b", fontSize:17, fontWeight:700, marginTop:14 }}>No emails found</p>
-              <p style={{ color:"#94a3b8", fontSize:14, marginTop:4 }}>
-                {connected ? 'Click "Sync Now" to fetch emails' : 'Connect Gmail to get started'}
-              </p>
-            </div>
-          ) : (
-            filtered.map(em => <DesktopRow key={em.id} em={em}/>)
-          )}
+            ) : filtered.length === 0 ? (
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"80px 0" }}>
+                <div style={{ width:68, height:68, background:"#f1f5f9", borderRadius:"50%",
+                              display:"grid", placeItems:"center" }}>
+                  <Inbox size={30} color="#94a3b8"/>
+                </div>
+                <p style={{ color:"#1e293b", fontSize:17, fontWeight:700, marginTop:14 }}>No emails found</p>
+                <p style={{ color:"#94a3b8", fontSize:14, marginTop:4 }}>
+                  {connected ? 'Click "Sync Now" to fetch emails' : 'Connect Gmail to get started'}
+                </p>
+              </div>
+            ) : (
+              filtered.map(em => <DesktopRow key={em.id} em={em}/>)
+            )}
+          </div>
         </div>
       </main>
     </div>
