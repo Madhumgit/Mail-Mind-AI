@@ -9,14 +9,6 @@ from bs4 import BeautifulSoup
 IMAP_SERVER = "imap.gmail.com"
 IMAP_PORT   = 993
 
-GMAIL_FOLDERS = [
-    '"[Gmail]/All Mail"',
-    "INBOX",
-    '"[Gmail]/Sent Mail"',
-    '"[Gmail]/Drafts"',
-    '"[Gmail]/Spam"',
-]
-
 
 def decode_mime_words(s):
     if not s:
@@ -70,8 +62,12 @@ def extract_body(msg):
     return body[:3000]
 
 
-def fetch_from_folder(mail, folder, max_emails=None):
-    """Fetch emails from a single IMAP folder. Returns list of email dicts."""
+def fetch_from_folder(mail, folder, max_emails=None, offset=0):
+    """
+    Fetch emails from a single IMAP folder.
+    offset: skip first N emails (for batching)
+    max_emails: how many to fetch after offset
+    """
     emails = []
     try:
         status, _ = mail.select(folder, readonly=True)
@@ -86,10 +82,16 @@ def fetch_from_folder(mail, folder, max_emails=None):
             print(f"[IMAP] No emails in {folder}")
             return []
 
-        all_ids = all_ids[::-1]  # newest first
-        ids     = all_ids if not max_emails else all_ids[:max_emails]
+        # Newest first
+        all_ids = all_ids[::-1]
 
-        print(f"[IMAP] {folder}: Found {len(all_ids)} emails, fetching {len(ids)}...")
+        # Apply offset
+        all_ids = all_ids[offset:]
+
+        # Apply limit
+        ids = all_ids if not max_emails else all_ids[:max_emails]
+
+        print(f"[IMAP] {folder}: Total={len(message_numbers[0].split())} offset={offset} fetching={len(ids)}...")
 
         for num in ids:
             try:
@@ -129,25 +131,19 @@ def fetch_from_folder(mail, folder, max_emails=None):
     return emails
 
 
-# ─────────────────────────────────────────────
-# ✅ FIXED: credentials passed as parameters
-#    NOT read from os.environ anymore
-# ─────────────────────────────────────────────
-
-def fetch_emails(email_address, app_password, max_emails=None, folder="ALL"):
+def fetch_emails(email_address, app_password, max_emails=None, offset=0, folder="ALL"):
     """
     Fetch emails for a specific user.
-    Credentials are passed directly — not read from environment.
+    max_emails: how many to fetch (None = all)
+    offset: skip first N emails (used for batching)
     """
     if not email_address or not app_password:
         print("[IMAP] Missing credentials")
         return []
 
-    # Clean the app password (remove spaces Gmail adds for readability)
     app_password = app_password.replace(" ", "").strip()
-
-    all_emails = []
-    seen_ids   = set()
+    all_emails   = []
+    seen_ids     = set()
 
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
@@ -155,7 +151,11 @@ def fetch_emails(email_address, app_password, max_emails=None, folder="ALL"):
         print(f"[IMAP] Logged in as {email_address}")
 
         if folder == "ALL":
-            fetched = fetch_from_folder(mail, '"[Gmail]/All Mail"', max_emails)
+            fetched = fetch_from_folder(
+                mail, '"[Gmail]/All Mail"',
+                max_emails=max_emails,
+                offset=offset
+            )
 
             if fetched:
                 for em in fetched:
@@ -163,19 +163,27 @@ def fetch_emails(email_address, app_password, max_emails=None, folder="ALL"):
                     if mid not in seen_ids:
                         seen_ids.add(mid)
                         all_emails.append(em)
-                print(f"[IMAP] ✅ All Mail: {len(all_emails)} unique emails")
+                print(f"[IMAP] ✅ Fetched {len(all_emails)} unique emails (offset={offset})")
             else:
+                # Fallback to INBOX + Spam
                 print("[IMAP] All Mail unavailable — fetching individual folders...")
                 for f in ["INBOX", '"[Gmail]/Spam"']:
-                    folder_emails = fetch_from_folder(mail, f, max_emails)
+                    folder_emails = fetch_from_folder(
+                        mail, f,
+                        max_emails=max_emails,
+                        offset=offset
+                    )
                     for em in folder_emails:
                         mid = em["message_id"]
                         if mid not in seen_ids:
                             seen_ids.add(mid)
                             all_emails.append(em)
-                print(f"[IMAP] ✅ Total unique emails: {len(all_emails)}")
         else:
-            all_emails = fetch_from_folder(mail, folder, max_emails)
+            all_emails = fetch_from_folder(
+                mail, folder,
+                max_emails=max_emails,
+                offset=offset
+            )
 
         mail.logout()
         print(f"[IMAP] Done. Fetched {len(all_emails)} emails for {email_address}")
@@ -189,11 +197,24 @@ def fetch_emails(email_address, app_password, max_emails=None, folder="ALL"):
         return []
 
 
+def get_total_email_count(email_address, app_password):
+    """Return total number of emails in All Mail."""
+    try:
+        app_password = app_password.replace(" ", "").strip()
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+        mail.login(email_address, app_password)
+        mail.select('"[Gmail]/All Mail"', readonly=True)
+        _, data = mail.search(None, "ALL")
+        count = len(data[0].split())
+        mail.logout()
+        return count
+    except Exception as e:
+        print(f"[IMAP] Count error: {e}")
+        return 0
+
+
 def test_connection(email_address, app_password):
-    """
-    Test IMAP connection for a specific user.
-    Returns (success: bool, message: str)
-    """
+    """Test IMAP connection. Returns (success, message)."""
     if not email_address or not app_password:
         return False, "No credentials provided"
 
