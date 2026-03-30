@@ -10,7 +10,7 @@ from database        import (init_db, insert_email, get_all_emails, get_stats,
                               get_user_settings, get_user_credentials, get_all_user_ids,
                               clear_emails)
 from gmail_service   import fetch_emails, test_connection, get_total_email_count
-from classifier      import classify_email, train_model, train_bert
+from classifier      import classify_email, train_model, train_bert, warm_up
 from priority_detector import detect_priority
 from summarizer      import summarize_email
 from scheduler       import start_scheduler, get_next_run, set_processor
@@ -23,14 +23,14 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {
     "origins": [
         "https://mailmind-agent.vercel.app",
-        "http://mailmind-agent.vercel.app",  # http version
+        "http://mailmind-agent.vercel.app",
     ],
     "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization", "X-User-Id"],
-    "supports_credentials": False  # ← change to False
+    "supports_credentials": False
 }})
 
-BATCH_SIZE = 50  # fetch 50 emails per IMAP call — safe for memory
+BATCH_SIZE = 50
 
 
 # ─────────────────────────────────────────────
@@ -83,8 +83,7 @@ def _process_batch(raw_emails, user_id):
 def process_emails_for_user(user_id):
     """
     Fetch ALL emails in batches of BATCH_SIZE.
-    Each batch: fetch from IMAP → classify → store → move to next batch.
-    This avoids loading all emails into memory at once.
+    Each batch: fetch from IMAP → classify → store → next batch.
     """
     email_addr, app_pwd = get_user_credentials(user_id)
 
@@ -92,7 +91,6 @@ def process_emails_for_user(user_id):
         print(f"[App] No credentials for user: {user_id}")
         return 0
 
-    # Get total count first
     total_on_gmail = get_total_email_count(email_addr, app_pwd)
     print(f"[App] Gmail has {total_on_gmail} emails for {user_id}")
 
@@ -120,12 +118,10 @@ def process_emails_for_user(user_id):
         total_stored += stored
         offset       += len(raw_emails)
 
-        print(f"[App] Batch done. Stored {stored} new. Total stored: {total_stored}. Offset now: {offset}")
+        print(f"[App] Batch done. Stored {stored} new. Total: {total_stored}. Offset: {offset}")
 
-        # Small pause between batches to avoid memory spike
         time.sleep(1)
 
-        # If batch returned fewer than BATCH_SIZE, we've reached the end
         if len(raw_emails) < BATCH_SIZE:
             print(f"[App] Last batch reached — all emails processed.")
             break
@@ -148,15 +144,33 @@ def process_all_users():
     thread.start()
 
 
-# ── Startup — delay scheduler by 60s so server boots cleanly ─────────────────
-def _delayed_start():
-    time.sleep(60)
+# ─────────────────────────────────────────────
+# Startup — warm up model FIRST, then scheduler
+# ─────────────────────────────────────────────
+
+def _startup():
+    """
+    1. Wait 5s for server to boot
+    2. Warm up classifier (train if needed) — fixes 'idf not fitted' error
+    3. Wait remaining time then start scheduler
+    """
+    time.sleep(5)
+
+    # ✅ Warm up classifier on every startup — Render filesystem resets on deploy
+    try:
+        warm_up()
+    except Exception as e:
+        print(f"[Startup] Classifier warm-up error: {e}")
+
+    # Wait total 60s before scheduler starts
+    time.sleep(55)
     set_processor(process_all_users)
     start_scheduler(interval_minutes=int(os.getenv("SCHEDULER_INTERVAL_MINUTES", 60)))
-    print("[Scheduler] Started with 60s boot delay.")
+    print("[Scheduler] ✅ Started after warm-up.")
+
 
 init_db()
-threading.Thread(target=_delayed_start, daemon=True).start()
+threading.Thread(target=_startup, daemon=True).start()
 
 
 # ─────────────────────────────────────────────
@@ -194,10 +208,7 @@ def get_emails():
 
 @app.route("/api/emails/fetch", methods=["POST"])
 def fetch_now():
-    """
-    Runs full batched fetch in background thread.
-    Returns immediately — frontend should poll after ~2 mins.
-    """
+    """Runs full batched fetch in background thread."""
     user_id = get_user_id_from_request()
     if not user_id:
         return jsonify({"success": False, "error": "user_id required"}), 400
@@ -211,7 +222,7 @@ def fetch_now():
         thread.start()
         return jsonify({
             "success": True,
-            "message": "Fetching all emails in background batches. Refresh in 2-3 minutes to see all emails."
+            "message": "Fetching emails in background. Refresh in 2-3 minutes."
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -298,7 +309,6 @@ def save_settings():
 # ─────────────────────────────────────────────
 
 @app.route("/api/current-email", methods=["GET"])
-
 def current_email():
     user_id = get_user_id_from_request()
     return jsonify({"email": user_id or "", "connected": bool(user_id)})
@@ -309,10 +319,13 @@ def current_email():
 # ─────────────────────────────────────────────
 
 @app.route("/api/train", methods=["GET", "POST"])
-
 def retrain():
     try:
         train_model()
+        # Reset model so next classify uses fresh model
+        from classifier import _model
+        import classifier
+        classifier._model = None
         return jsonify({"success": True, "message": "TF-IDF model retrained successfully."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -401,7 +414,7 @@ def debug_counts():
         mail.login(email_addr, app_pwd.replace(" ", "").strip())
 
         folder_counts = {}
-        for f in ['"[Gmail]/All Mail"', "INBOX", '"[Gmail]/Spam"', '"[Gmail]/Sent Mail"']:
+        for f in ['"[Gmail]/All Mail"', "INBOX", '"[Gmail]/Spam"', '"[Gmail]/Spam"', '"[Gmail]/Sent Mail"']:
             try:
                 status, _ = mail.select(f, readonly=True)
                 if status == "OK":
