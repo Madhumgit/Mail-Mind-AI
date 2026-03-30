@@ -24,7 +24,7 @@ _bert_tokenizer = None
 _bert_model     = None
 _bert_encoder   = None
 
-# ── TF-IDF model — lazy loaded on first classify call ─────────────────────────
+# ── TF-IDF model — loaded/trained once ───────────────────────────────────────
 _model = None
 
 
@@ -46,6 +46,7 @@ def train_model():
 
     df = pd.read_csv(DATA_PATH)
     print(f"[ML] Loaded {len(df)} training samples")
+    print(f"[ML] Categories: {df['category'].value_counts().to_dict()}")
     df["clean_text"] = df["text"].apply(preprocess_text)
 
     pipeline = Pipeline([
@@ -65,30 +66,69 @@ def train_model():
     pipeline.fit(df["clean_text"], df["category"])
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     joblib.dump(pipeline, MODEL_PATH)
-    print(f"[ML] ✅ TF-IDF model saved → {MODEL_PATH}")
+    print(f"[ML] ✅ TF-IDF model trained and saved → {MODEL_PATH}")
     return pipeline
 
 
+def _test_model(model):
+    """
+    Test the model actually works by running a prediction.
+    Returns True if working, False if broken.
+    """
+    try:
+        result = model.predict(["interview invitation software engineer job"])
+        print(f"[ML] Model test prediction: {result[0]}")
+        return True
+    except Exception as e:
+        print(f"[ML] Model test failed: {e}")
+        return False
+
+
 def get_model():
-    """Lazy load TF-IDF model — only on first classify call."""
+    """
+    Load TF-IDF model. If missing or broken → retrain automatically.
+    Called on first classify_email() call.
+    """
     global _model
-    if _model is None:
-        if os.path.exists(MODEL_PATH):
-            try:
-                print("[ML] Loading saved TF-IDF model...")
-                _model = joblib.load(MODEL_PATH)
-                print("[ML] ✅ TF-IDF model loaded")
-            except Exception as e:
-                print(f"[ML] Saved model incompatible ({e}) — retraining...")
+    if _model is not None:
+        return _model
+
+    if os.path.exists(MODEL_PATH):
+        try:
+            print("[ML] Loading saved TF-IDF model...")
+            loaded = joblib.load(MODEL_PATH)
+            # ✅ Test it actually works — catches version mismatch
+            if _test_model(loaded):
+                _model = loaded
+                print("[ML] ✅ TF-IDF model loaded and verified")
+            else:
+                print("[ML] Saved model failed test — retraining...")
                 _model = train_model()
-        else:
+        except Exception as e:
+            print(f"[ML] Model load error ({e}) — retraining...")
             _model = train_model()
+    else:
+        print("[ML] No saved model found — training fresh...")
+        _model = train_model()
+
     return _model
+
+
+def warm_up():
+    """
+    Called on startup to ensure model is ready before any requests.
+    Prevents 'idf vector is not fitted' errors.
+    """
+    global _model
+    print("[ML] Warming up classifier...")
+    _model = None  # force fresh load/train
+    get_model()
+    print("[ML] ✅ Classifier ready")
 
 
 def classify_email(subject, body):
     """
-    Fast TF-IDF classifier. BERT is disabled for performance.
+    Fast TF-IDF classifier.
     Returns (category, confidence).
     """
     try:
@@ -101,6 +141,9 @@ def classify_email(subject, body):
         return prediction, confidence
     except Exception as e:
         print(f"[ML] Classification error: {e}")
+        # Force retrain on next call
+        global _model
+        _model = None
         return "Other", 0.0
 
 
