@@ -24,13 +24,15 @@ CORS(app, resources={r"/api/*": {
     "origins": [
         "https://mailmind-agent.vercel.app",
         "http://mailmind-agent.vercel.app",
+        "capacitor://localhost",
+        "http://localhost",
+        "http://localhost:8080",
+        "null"
     ],
     "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization", "X-User-Id"],
     "supports_credentials": False
 }})
-
-BATCH_SIZE = 50
 
 
 # ─────────────────────────────────────────────
