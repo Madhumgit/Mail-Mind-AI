@@ -19,6 +19,7 @@ from smart_reply     import generate_smart_replies
 load_dotenv()
 
 app = Flask(__name__)
+BATCH_SIZE = 50
 
 CORS(app, resources={r"/api/*": {
     "origins": [
@@ -100,7 +101,7 @@ def process_emails_for_user(user_id):
     offset       = 0
 
     while offset < total_on_gmail:
-        print(f"[App] Fetching batch: offset={offset} size={BATCH_SIZE}...")
+        print(f"[App] Fetching batch: offset={offset} size={BATCH_SIZE }...")
 
         try:
             raw_emails = fetch_emails(
